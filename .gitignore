@@ -1,0 +1,12 @@
+src/CMakeCache.txt
+src/CMakeFiles/
+src/CTestTestfile.cmake
+src/Makefile
+*.cmake
+*.cxx
+*.cxx_parameters
+src/resources/speedcrunch.qrc.depends
+src/speedcrunch
+src/testevaluator
+src/testfloatnum
+src/testhmath
