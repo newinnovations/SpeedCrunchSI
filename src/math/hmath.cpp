@@ -712,7 +712,7 @@ char* formatScientific( cfloatnum x, int prec )
  */
 char* formatEngineering( cfloatnum x, int prec )
 {
-  unsigned flags = IO_FLAG_SUPPRESS_PLUS + IO_FLAG_SUPPRESS_EXPPLUS;
+  unsigned flags = IO_FLAG_SUPPRESS_PLUS + IO_FLAG_SUPPRESS_EXPPLUS + IO_FLAG_SUPPRESS_EXPZERO;
   if( prec <= 1 )
   {
     flags |= IO_FLAG_SUPPRESS_TRL_ZERO + IO_FLAG_SUPPRESS_DOT;
