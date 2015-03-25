@@ -161,6 +161,7 @@ void MainWindow::createActions()
     m_actions.settingsResultFormatAutoPrecision = new QAction(this);
     m_actions.settingsResultFormatBinary = new QAction(this);
     m_actions.settingsResultFormatEngineering = new QAction(this);
+    m_actions.settingsResultFormatEngineeringSI = new QAction(this);
     m_actions.settingsResultFormatFixed = new QAction(this);
     m_actions.settingsResultFormatGeneral = new QAction(this);
     m_actions.settingsResultFormatHexadecimal = new QAction(this);
@@ -213,6 +214,7 @@ void MainWindow::createActions()
     m_actions.settingsResultFormatAutoPrecision->setCheckable(true);
     m_actions.settingsResultFormatBinary->setCheckable(true);
     m_actions.settingsResultFormatEngineering->setCheckable(true);
+    m_actions.settingsResultFormatEngineeringSI->setCheckable(true);
     m_actions.settingsResultFormatFixed->setCheckable(true);
     m_actions.settingsResultFormatGeneral->setCheckable(true);
     m_actions.settingsResultFormatHexadecimal->setCheckable(true);
@@ -271,6 +273,7 @@ void MainWindow::setStatusBarText()
             case 'h': format = MainWindow::tr("Hexadecimal"); break;
             case 'f': format = MainWindow::tr("Fixed decimal"); break;
             case 'n': format = MainWindow::tr("Engineering decimal"); break;
+            case 's': format = MainWindow::tr("Engineering SI decimal"); break;
             case 'e': format = MainWindow::tr("Scientific decimal"); break;
             case 'g': format = MainWindow::tr("General decimal"); break;
             default : break;
@@ -281,6 +284,13 @@ void MainWindow::setStatusBarText()
 
         m_status.angleUnit->setToolTip(MainWindow::tr("Angle unit"));
         m_status.resultFormat->setToolTip(MainWindow::tr("Result format"));
+
+	m_status.precMin->setText(MainWindow::tr("-"));
+        m_status.precMin->setToolTip(MainWindow::tr("Decrease decimal precision"));
+	m_status.precAuto->setText(MainWindow::tr("Auto"));
+        m_status.precAuto->setToolTip(MainWindow::tr("Automatic decimal precision"));
+	m_status.precPlus->setText(MainWindow::tr("+"));
+        m_status.precPlus->setToolTip(MainWindow::tr("Increase decimal precision"));
     }
 }
 
@@ -341,6 +351,7 @@ void MainWindow::setActionsText()
     m_actions.settingsResultFormatAutoPrecision->setText(MainWindow::tr("&Automatic"));
     m_actions.settingsResultFormatBinary->setText(MainWindow::tr("&Binary"));
     m_actions.settingsResultFormatEngineering->setText(MainWindow::tr("&Engineering"));
+    m_actions.settingsResultFormatEngineeringSI->setText(MainWindow::tr("Engineering SI"));
     m_actions.settingsResultFormatFixed->setText(MainWindow::tr("&Fixed Decimal"));
     m_actions.settingsResultFormatGeneral->setText(MainWindow::tr("&General"));
     m_actions.settingsResultFormatHexadecimal->setText(MainWindow::tr("&Hexadecimal"));
@@ -369,6 +380,7 @@ void MainWindow::createActionGroups()
     m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatGeneral);
     m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatFixed);
     m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatEngineering);
+    m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatEngineeringSI);
     m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatScientific);
     m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatOctal);
     m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatHexadecimal);
@@ -427,8 +439,8 @@ void MainWindow::createActionShortcuts()
     m_actions.settingsAngleUnitDegree->setShortcut(Qt::Key_F10);
     m_actions.settingsAngleUnitRadian->setShortcut(Qt::Key_F9);
     m_actions.settingsResultFormatGeneral->setShortcut(Qt::Key_F1);
-    m_actions.settingsResultFormatFixed->setShortcut(Qt::Key_F2);
-    m_actions.settingsResultFormatEngineering->setShortcut(Qt::Key_F3);
+    m_actions.settingsResultFormatEngineering->setShortcut(Qt::Key_F2);
+    m_actions.settingsResultFormatEngineeringSI->setShortcut(Qt::Key_F3);
     m_actions.settingsResultFormatScientific->setShortcut(Qt::Key_F4);
     m_actions.settingsResultFormatBinary->setShortcut(Qt::Key_F5);
     m_actions.settingsResultFormatOctal->setShortcut(Qt::Key_F6);
@@ -483,6 +495,7 @@ void MainWindow::createMenus()
     m_menus.decimal->addAction(m_actions.settingsResultFormatGeneral);
     m_menus.decimal->addAction(m_actions.settingsResultFormatFixed);
     m_menus.decimal->addAction(m_actions.settingsResultFormatEngineering);
+    m_menus.decimal->addAction(m_actions.settingsResultFormatEngineeringSI);
     m_menus.decimal->addAction(m_actions.settingsResultFormatScientific);
     m_menus.decimal->addSeparator();
 
@@ -587,9 +600,18 @@ void MainWindow::createStatusBar()
 
     m_status.angleUnit = new QPushButton(bar);
     m_status.resultFormat = new QPushButton(bar);
+    m_status.precMin = new QPushButton(bar);
+    m_status.precAuto = new QPushButton(bar);
+    m_status.precPlus = new QPushButton(bar);
 
-    m_status.angleUnit->setFlat(true);
-    m_status.resultFormat->setFlat(true);
+    //m_status.angleUnit->setFlat(true);
+    //m_status.resultFormat->setFlat(true);
+    //m_status.precMin->setFlat(true);
+    //m_status.precAuto->setFlat(true);
+    //m_status.precPlus->setFlat(true);
+
+    m_status.precMin->setFixedWidth(40);
+    m_status.precPlus->setFixedWidth(40);
 
     m_status.angleUnit->setContextMenuPolicy(Qt::ActionsContextMenu);
     m_status.angleUnit->addAction(m_actions.settingsAngleUnitRadian);
@@ -601,9 +623,15 @@ void MainWindow::createStatusBar()
 
     connect(m_status.angleUnit, SIGNAL(clicked()), SLOT(cycleAngleUnits()));
     connect(m_status.resultFormat, SIGNAL(clicked()), SLOT(cycleResultFormats()));
+    connect(m_status.precMin, SIGNAL(clicked()), SLOT(precisionDecrease()));
+    connect(m_status.precAuto, SIGNAL(clicked()), SLOT(precisionAuto()));
+    connect(m_status.precPlus, SIGNAL(clicked()), SLOT(precisionIncrease()));
 
     bar->addWidget(m_status.angleUnit);
     bar->addWidget(m_status.resultFormat);
+    bar->addWidget(m_status.precMin);
+    bar->addWidget(m_status.precAuto);
+    bar->addWidget(m_status.precPlus);
 
     setStatusBarText();
 }
@@ -886,6 +914,7 @@ void MainWindow::createFixedConnections()
     connect(m_actions.settingsResultFormatAutoPrecision, SIGNAL(triggered()), SLOT(setResultPrecisionAutomatic()));
     connect(m_actions.settingsResultFormatBinary, SIGNAL(triggered()), SLOT(setResultFormatBinary()));
     connect(m_actions.settingsResultFormatEngineering, SIGNAL(triggered()), SLOT(setResultFormatEngineering()));
+    connect(m_actions.settingsResultFormatEngineeringSI, SIGNAL(triggered()), SLOT(setResultFormatEngineeringSI()));
     connect(m_actions.settingsResultFormatFixed, SIGNAL(triggered()), SLOT(setResultFormatFixed()));
     connect(m_actions.settingsResultFormatGeneral, SIGNAL(triggered()), SLOT(setResultFormatGeneral()));
     connect(m_actions.settingsResultFormatHexadecimal, SIGNAL(triggered()), SLOT(setResultFormatHexadecimal()));
@@ -1082,6 +1111,7 @@ void MainWindow::checkInitialResultFormat()
     switch (m_settings->resultFormat) {
         case 'g': m_actions.settingsResultFormatGeneral->setChecked(true); break;
         case 'n': m_actions.settingsResultFormatEngineering->setChecked(true); break;
+        case 's': m_actions.settingsResultFormatEngineeringSI->setChecked(true); break;
         case 'e': m_actions.settingsResultFormatScientific->setChecked(true); break;
         case 'h': m_actions.settingsResultFormatHexadecimal->setChecked(true); break;
         case 'o': m_actions.settingsResultFormatOctal->setChecked(true); break;
@@ -2116,6 +2146,15 @@ void MainWindow::setResultFormatEngineering()
         m_status.resultFormat->setText(tr("Engineering decimal"));
 }
 
+void MainWindow::setResultFormatEngineeringSI()
+{
+    m_actionGroups.digits->setEnabled(true);
+    setResultFormat('s');
+
+    if (m_status.resultFormat)
+        m_status.resultFormat->setText(tr("Engineering SI decimal"));
+}
+
 void MainWindow::setResultFormatFixed()
 {
     m_actionGroups.digits->setEnabled(true);
@@ -2609,6 +2648,8 @@ void MainWindow::cycleResultFormats()
   else if (m_actions.settingsResultFormatFixed->isChecked())
       m_actions.settingsResultFormatEngineering->trigger();
   else if (m_actions.settingsResultFormatEngineering->isChecked())
+      m_actions.settingsResultFormatEngineeringSI->trigger();
+  else if (m_actions.settingsResultFormatEngineeringSI->isChecked())
       m_actions.settingsResultFormatScientific->trigger();
   else if (m_actions.settingsResultFormatScientific->isChecked())
       m_actions.settingsResultFormatBinary->trigger();
@@ -2618,4 +2659,25 @@ void MainWindow::cycleResultFormats()
       m_actions.settingsResultFormatHexadecimal->trigger();
   else if (m_actions.settingsResultFormatHexadecimal->isChecked())
       m_actions.settingsResultFormatGeneral->trigger();
+}
+
+void MainWindow::precisionDecrease()
+{
+	if (m_settings->resultPrecision < 0)
+		setResultPrecision(2);
+	else if (m_settings->resultPrecision > 2)
+		setResultPrecision(m_settings->resultPrecision - 1);
+}
+
+void MainWindow::precisionAuto()
+{
+	setResultPrecision(-1);
+}
+
+void MainWindow::precisionIncrease()
+{
+	if (m_settings->resultPrecision < 0)
+		setResultPrecision(3);
+	else if (m_settings->resultPrecision < 50)
+		setResultPrecision(m_settings->resultPrecision + 1);
 }

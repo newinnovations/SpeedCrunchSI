@@ -56,6 +56,7 @@
 #define IO_FLAG_SUPPRESS_EXPZERO    0x100
 #define IO_FLAG_SHOW_BASE           0x200
 #define IO_FLAG_SHOW_EXPBASE        0x400
+#define IO_FLAG_SHOW_EXP_SI         0x800
 
 #ifdef __cplusplus
 extern "C"{

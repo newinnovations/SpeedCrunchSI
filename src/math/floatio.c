@@ -912,7 +912,7 @@ cattokens(
   char* expbasetag;
   signed char base;
   char dot;
-  char cbuf[2];
+  char cbuf[3];
   char printsign;
   char printbasetag;
   char printcmpl;
@@ -923,12 +923,14 @@ cattokens(
   char printexpbase = 0;
   char printexpbegin;
   char printexpend;
+  char printsi;
   char exp[BITS_IN_BINEXP+2];
   t_buffer expBuf;
 
   expBuf.sz = sizeof(exp);
   expBuf.buf = exp;
   cbuf[1] = '\0';
+  cbuf[2] = '\0';
   fraclg = 0;
   if (!_isempty(tokens->fracpart.buf))
   {
@@ -963,6 +965,7 @@ cattokens(
   printexp = base != IO_BASE_NAN && base != IO_BASE_ZERO
              && ((flags & IO_FLAG_SUPPRESS_EXPZERO) == 0
                   || tokens->exp != 0);
+  printsi = tokens->exp >= -15 && tokens->exp <= 15 && (tokens->exp % 3) == 0 && (flags & IO_FLAG_SHOW_EXP_SI) != 0;
   if (printexp)
   {
     if (expbase < 2)
@@ -1004,16 +1007,23 @@ cattokens(
   sz += fraclg;
   if (printexp)
   {
-    exp2str(&expBuf, tokens->exp, expbase);
-    if (printexpbegin)
+    if (printsi)
+    {
       ++sz;
-    if (printexpsign)
-      sz += 1;
-    if (printexpbase)
-      sz += strlen(expbasetag);
-    sz += strlen(expBuf.buf);
-    if (printexpend)
-      ++sz;
+    }
+    else
+    {
+      exp2str(&expBuf, tokens->exp, expbase);
+      if (printexpbegin)
+        ++sz;
+      if (printexpsign)
+        sz += 1;
+      if (printexpbase)
+        sz += strlen(expbasetag);
+      sz += strlen(expBuf.buf);
+      if (printexpend)
+        ++sz;
+    }
   }
   if (sz <= bufsz)
   {
@@ -1030,14 +1040,36 @@ cattokens(
       strncat(buf, tokens->fracpart.buf, fraclg);
     if (printexp)
     {
-      cbuf[0] = *expbegin;
-      _cattoken(buf, cbuf, printexpbegin);
-      cbuf[0] = _decodesign(tokens->exp < 0? -1:1);
-      _cattoken(buf, cbuf, printexpsign);
-      _cattoken(buf, expbasetag, printexpbase);
-      strcat(buf, expBuf.buf);
-      cbuf[0] = *expend;
-      _cattoken(buf, cbuf, printexpend);
+      if (printsi)
+      {
+        switch (tokens->exp)
+        {
+          case  15: cbuf[0] = 'P'; break;
+          case  12: cbuf[0] = 'T'; break;
+          case   9: cbuf[0] = 'G'; break;
+          case   6: cbuf[0] = 'M'; break;
+          case   3: cbuf[0] = 'k'; break;
+          case  -3: cbuf[0] = 'm'; break;
+          case  -6: cbuf[0] = 0xb5; break; // µ
+          case  -9: cbuf[0] = 'n'; break;
+          case -12: cbuf[0] = 'p'; break;
+          case -15: cbuf[0] = 'f'; break;
+          default : cbuf[0] = '?'; break;
+        }
+        _cattoken(buf, cbuf, printsi);
+         cbuf[1] = '\0';
+      }
+      else
+      {
+        cbuf[0] = *expbegin;
+        _cattoken(buf, cbuf, printexpbegin);
+        cbuf[0] = _decodesign(tokens->exp < 0? -1:1);
+        _cattoken(buf, cbuf, printexpsign);
+        _cattoken(buf, expbasetag, printexpbase);
+        strcat(buf, expBuf.buf);
+        cbuf[0] = *expend;
+        _cattoken(buf, cbuf, printexpend);
+      }
     }
   }
   return sz;

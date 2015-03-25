@@ -722,6 +722,21 @@ char* formatEngineering( cfloatnum x, int prec )
 }
 
 /**
+ * Formats the given number as string, in engineering SI notation.
+ * Note that the returned string must be freed.
+ */
+char* formatEngineeringSI( cfloatnum x, int prec )
+{
+  unsigned flags = IO_FLAG_SUPPRESS_PLUS + IO_FLAG_SUPPRESS_EXPPLUS + IO_FLAG_SUPPRESS_EXPZERO + IO_FLAG_SHOW_EXP_SI;
+  if( prec <= 1 )
+  {
+    flags |= IO_FLAG_SUPPRESS_TRL_ZERO + IO_FLAG_SUPPRESS_DOT;
+    prec = HMATH_MAX_SHOWN;
+  }
+  return _doFormat(x, 10, 10, IO_MODE_ENG, prec, flags);
+}
+
+/**
  * Formats the given number as string, using specified decimal digits.
  * Note that the returned string must be freed.
  */
@@ -773,6 +788,7 @@ char* HMath::format( const HNumber& hn, char format, int prec )
   case 'f': rs = formatFixed(&hn.d->fnum, prec ); break;
   case 'e': rs = formatScientific(&hn.d->fnum, prec ); break;
   case 'n': rs = formatEngineering(&hn.d->fnum, prec ); break;
+  case 's': rs = formatEngineeringSI(&hn.d->fnum, prec ); break;
   case 'h': rs = formathexfp(&hn.d->fnum, 16, 10, HMATH_HEX_MAX_SHOWN); break;
   case 'o': rs = formathexfp(&hn.d->fnum, 8, 10, HMATH_OCT_MAX_SHOWN); break;
   case 'b': rs = formathexfp(&hn.d->fnum, 2, 10, HMATH_BIN_MAX_SHOWN); break;

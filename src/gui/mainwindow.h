@@ -75,6 +75,9 @@ private slots:
     void copyResultToClipboard();
     void cycleAngleUnits();
     void cycleResultFormats();
+    void precisionDecrease();
+    void precisionAuto();
+    void precisionIncrease();
     void decreaseOpacity();
     void deleteVariables();
     void deleteUserFunctions();
@@ -124,6 +127,7 @@ private slots:
     void setResultFormatBinary();
     void setResultFormat(char);
     void setResultFormatEngineering();
+    void setResultFormatEngineeringSI();
     void setResultFormatFixed();
     void setResultFormatGeneral();
     void setResultFormatHexadecimal();
@@ -239,6 +243,7 @@ private:
         QAction* settingsResultFormatGeneral;
         QAction* settingsResultFormatFixed;
         QAction* settingsResultFormatEngineering;
+        QAction* settingsResultFormatEngineeringSI;
         QAction* settingsResultFormatScientific;
         QAction* settingsResultFormatAutoPrecision;
         QAction* settingsResultFormat2Digits;
@@ -348,6 +353,9 @@ private:
     struct {
         QPushButton* angleUnit;
         QPushButton* resultFormat;
+        QPushButton* precMin;
+        QPushButton* precAuto;
+        QPushButton* precPlus;
     } m_status;
 
     Constants* m_constants;

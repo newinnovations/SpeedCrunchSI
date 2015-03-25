@@ -435,6 +435,33 @@ Tokens Evaluator::tokens() const
     return scan(m_expression);
 }
 
+void Evaluator::checkSIPrefix(QString& tokenText, QChar& ch, int& i) const
+{
+    switch (ch.toLatin1())
+    {
+        case 'Y': tokenText.append("E24"); ++i; break;
+        case 'Z': tokenText.append("E21"); ++i; break;
+        case 'E': tokenText.append("E18"); ++i; break;
+        case 'P': tokenText.append("E15"); ++i; break;
+        case 'T': tokenText.append("E12"); ++i; break;
+        case 'G': tokenText.append("E9"); ++i; break;
+        case 'M': tokenText.append("E6"); ++i; break;
+        case 'k': tokenText.append("E3"); ++i; break;
+        case 'h': tokenText.append("E2"); ++i; break;
+        case 'd': tokenText.append("E-1"); ++i; break;
+        case 'c': tokenText.append("E-2"); ++i; break;
+        case 'm': tokenText.append("E-3"); ++i; break;
+        case -0x4b: // µ
+        case 'u': tokenText.append("E-6"); ++i; break;
+        case 'n': tokenText.append("E-9"); ++i; break;
+        case 'p': tokenText.append("E-12"); ++i; break;
+        case 'f': tokenText.append("E-15"); ++i; break;
+        case 'a': tokenText.append("E-18"); ++i; break;
+        case 'z': tokenText.append("E-21"); ++i; break;
+        case 'y': tokenText.append("E-24"); ++i; break;
+    }
+}
+
 Tokens Evaluator::scan(const QString& expr, Evaluator::AutoFixPolicy policy) const
 {
     // Result.
@@ -573,6 +600,7 @@ Tokens Evaluator::scan(const QString& expr, Evaluator::AutoFixPolicy policy) con
             } else if (isSeparatorChar(ch)) // Ignore thousand separators
                 ++i;
             else { // We're done with integer number.
+                checkSIPrefix(tokenText, ch, i); // But there may be an SI prefix
                 tokens.append(Token(Token::stxNumber, tokenText, tokenStart));
                 tokenText = "";
                 state = Start;
@@ -639,6 +667,7 @@ Tokens Evaluator::scan(const QString& expr, Evaluator::AutoFixPolicy policy) con
             } else if (isSeparatorChar(ch)) // Ignore thousand separators
                 ++i;
             else { // We're done with floating-point number.
+                checkSIPrefix(tokenText, ch, i); // But there may be an SI prefix
                 tokens.append(Token(Token::stxNumber, tokenText, tokenStart));
                 tokenText = "";
                 state = Start;

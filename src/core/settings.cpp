@@ -99,7 +99,7 @@ void Settings::load()
     // Format special case.
     QString format;
     format = settings->value(key + QLatin1String("Type"), 'f').toString();
-    if (format != "g" && format != "f" && format != "e" && format != "n"&& format != "h" && format != "o" && format != "b")
+    if (format != "g" && format != "f" && format != "e" && format != "n"&& format != "h" && format != "o" && format != "b" && format != "s")
         resultFormat = 'f';
     else
         resultFormat = format.at(0).toLatin1();
