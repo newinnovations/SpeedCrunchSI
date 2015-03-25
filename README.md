@@ -1,5 +1,12 @@
-# SpeedCrunch
-SpeedCrunch is a high-precision scientific calculator. It features a syntax-highlighted scrollable display and is designed to be fully used via keyboard. Some distinctive features are auto-completion of functions and variables, a formula book, and quick insertion of constants from various fields of knowledge. Available for Windows, OS X, and Linux in a number of languages. For binary downloads, please visit the [home](http://speedcrunch.org/) or [download](https://bitbucket.org/heldercorreia/speedcrunch/downloads) pages. These are the official mirrors for development: [GitHub](https://github.com/speedcrunch), [Google Code](https://code.google.com/p/speedcrunch/), [Gitorious](https://gitorious.org/speedcrunch), [Bitbucket](https://bitbucket.org/heldercorreia/speedcrunch/).
+# SpeedCrunch/SI
+
+## About this fork
+This fork adds SI prefixes to SpeedCrunch. You can enter numbers like 2.5k and 3.3n for 2.5e3 and 3.3e-9 respectively. There is also a new engineering format that shows SI prefixes instead of exponents.
+
+There are some minor modifications like suppression of e0 in engineering format and buttons for decimal precision on the status bar. 
+
+## About SpeedCrunch
+SpeedCrunch is a high-precision scientific calculator. It features a syntax-highlighted scrollable display and is designed to be fully used via keyboard. Some distinctive features are auto-completion of functions and variables, a formula book, and quick insertion of constants from various fields of knowledge. Available for Windows, OS X, and Linux in a number of languages.
 
 ## Building
 To build from source, use either CMake or QMake to build the project:
@@ -20,12 +27,6 @@ as below:
 or
 
     qmake "DEFINES+=SPEEDCRUNCH_PORTABLE" speedcrunch.pro
-
-## Contributing
-- Report bugs or request features in the [issue tracker](http://code.google.com/p/speedcrunch/issues/list).
-- Add or improve a [translation](https://www.transifex.com/projects/p/speedcrunch/).
-- Send a message to the [forum](https://groups.google.com/group/speedcrunch).
-- Follow the news on the [blog](http://speedcrunch.blogspot.com).
 
 ## License
 This program is free software; you can redistribute it and/or modify
