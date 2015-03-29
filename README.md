@@ -1,7 +1,7 @@
 # SpeedCrunch/SI
 
 ## About this fork
-This fork adds SI prefixes to SpeedCrunch. You can enter numbers like 2.5k and 3.3n for 2.5e3 and 3.3e-9 respectively. There is also a new engineering format that shows SI prefixes instead of exponents.
+This fork adds SI prefixes to SpeedCrunch. You can enter numbers like 2.5k and 3.369n for 2.5e3 and 3.369e-9 respectively. Now the form of 2k5 and 3n369 may also be used. There is a corresponding engineering format that shows SI prefixes instead of exponents. Eg: 44k1\*512 = 22.5792M
 
 There are some minor modifications like suppression of e0 in engineering format and buttons for decimal precision on the status bar. 
 

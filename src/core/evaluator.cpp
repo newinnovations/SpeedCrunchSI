@@ -435,31 +435,40 @@ Tokens Evaluator::tokens() const
     return scan(m_expression);
 }
 
-void Evaluator::checkSIPrefix(QString& tokenText, QChar& ch, int& i) const
+QString Evaluator::checkSIPrefix(QChar& ch) const
 {
+    QString exp;
+
     switch (ch.toLatin1())
     {
-        case 'Y': tokenText.append("E24"); ++i; break;
-        case 'Z': tokenText.append("E21"); ++i; break;
-        case 'E': tokenText.append("E18"); ++i; break;
-        case 'P': tokenText.append("E15"); ++i; break;
-        case 'T': tokenText.append("E12"); ++i; break;
-        case 'G': tokenText.append("E9"); ++i; break;
-        case 'M': tokenText.append("E6"); ++i; break;
-        case 'k': tokenText.append("E3"); ++i; break;
-        case 'h': tokenText.append("E2"); ++i; break;
-        case 'd': tokenText.append("E-1"); ++i; break;
-        case 'c': tokenText.append("E-2"); ++i; break;
-        case 'm': tokenText.append("E-3"); ++i; break;
+        case 'Y': exp = "E24" ; break;
+        case 'Z': exp = "E21" ; break;
+        case 'E': exp = "E18" ; break;
+        case 'P': exp = "E15" ; break;
+        case 'T': exp = "E12" ; break;
+        case 'G': exp = "E9"  ; break;
+        case 'M': exp = "E6"  ; break;
+        case 'k': exp = "E3"  ; break;
+        case 'h': exp = "E2"  ; break;
+        case 'd': exp = "E-1" ; break;
+        case 'c': exp = "E-2" ; break;
+        case 'm': exp = "E-3" ; break;
         case -0x4b: // µ
-        case 'u': tokenText.append("E-6"); ++i; break;
-        case 'n': tokenText.append("E-9"); ++i; break;
-        case 'p': tokenText.append("E-12"); ++i; break;
-        case 'f': tokenText.append("E-15"); ++i; break;
-        case 'a': tokenText.append("E-18"); ++i; break;
-        case 'z': tokenText.append("E-21"); ++i; break;
-        case 'y': tokenText.append("E-24"); ++i; break;
+        case 'u': exp = "E-6" ; break;
+        case 'n': exp = "E-9" ; break;
+        case 'p': exp = "E-12"; break;
+        case 'f': exp = "E-15"; break;
+        case 'a': exp = "E-18"; break;
+        case 'z': exp = "E-21"; break;
+        case 'y': exp = "E-24"; break;
     }
+
+    return exp;
+}
+
+bool Evaluator::isSIPrefix(QChar& ch) const
+{
+    return !checkSIPrefix(ch).isNull();
 }
 
 Tokens Evaluator::scan(const QString& expr, Evaluator::AutoFixPolicy policy) const
@@ -479,6 +488,7 @@ Tokens Evaluator::scan(const QString& expr, Evaluator::AutoFixPolicy policy) con
     int tokenStart = 0;
     Token::Type type;
     bool numberFrac = false;
+    QString expSI;
 
     // Force a terminator.
     ex.append(QChar());
@@ -597,10 +607,14 @@ Tokens Evaluator::scan(const QString& expr, Evaluator::AutoFixPolicy policy) con
             } else if (ch.toUpper() == 'D' && tokenText == "0") { // Explicit decimal notation.
                 tokenText = ""; // We also need to get rid of the leading zero.
                 ++i;
+            } else if (expSI.isNull() && isSIPrefix(ch)) { // SI prefix (only one allowed) and digits following are decimals
+                expSI = checkSIPrefix(ch);
+                tokenText.append('.');
+                state = InDecimal;
+                ++i;
             } else if (isSeparatorChar(ch)) // Ignore thousand separators
                 ++i;
             else { // We're done with integer number.
-                checkSIPrefix(tokenText, ch, i); // But there may be an SI prefix
                 tokens.append(Token(Token::stxNumber, tokenText, tokenStart));
                 tokenText = "";
                 state = Start;
@@ -660,14 +674,21 @@ Tokens Evaluator::scan(const QString& expr, Evaluator::AutoFixPolicy policy) con
         case InDecimal:
             if (ch.isDigit()) // Consume as long as it's a digit.
                 tokenText.append(ex.at(i++));
-            else if (ch.toUpper() == 'E') { // Exponent?
+            else if (expSI.isNull() && (ch.toUpper() == 'E')) { // Exponent?
                 tokenText.append('E');
                 ++i;
                 state = InExpIndicator;
             } else if (isSeparatorChar(ch)) // Ignore thousand separators
                 ++i;
             else { // We're done with floating-point number.
-                checkSIPrefix(tokenText, ch, i); // But there may be an SI prefix
+                if (expSI.isNull() && isSIPrefix(ch)) { // But there may be an SI prefix
+                    expSI = checkSIPrefix(ch);
+                    ++i;
+                }
+                if (!expSI.isNull()) {
+                    tokenText.append(expSI);
+                    expSI = QString();
+                }
                 tokens.append(Token(Token::stxNumber, tokenText, tokenStart));
                 tokenText = "";
                 state = Start;

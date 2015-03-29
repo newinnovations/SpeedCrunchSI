@@ -105,7 +105,8 @@ public:
     static bool isSeparatorChar(const QChar&);
     static bool isRadixChar(const QChar&);
 
-    void checkSIPrefix(QString& tokenText, QChar& ch, int& i) const;
+    QString checkSIPrefix(QChar& ch) const;
+    bool isSIPrefix(QChar& ch) const;
 
     QString autoFix(const QString&);
     QString dump();
