@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2004 Ariya Hidayat <ariya@kde.org>
-// Copyright (C) 2008-2009, 2013 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2008-2009, 2013 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -21,9 +21,10 @@
 #define CORE_FUNCTION_H
 
 #include "core/errors.h"
-#include "math/hmath.h"
+#include "math/quantity.h"
 
 #include <QHash>
+#include <QObject>
 #include <QStringList>
 #include <QVector>
 
@@ -32,8 +33,8 @@ class Function;
 class Function : public QObject {
     Q_OBJECT
 public:
-    typedef QVector<HNumber> ArgumentList;
-    typedef HNumber (*FunctionImpl)(Function*, const ArgumentList&);
+    typedef QVector<Quantity> ArgumentList;
+    typedef Quantity (*FunctionImpl)(Function*, const ArgumentList&);
 
     Function(const QString& identifier, FunctionImpl ptr, QObject* parent = 0)
         : QObject(parent)
@@ -45,7 +46,7 @@ public:
     const QString& name() const { return m_name; }
     const QString& usage() const { return m_usage; }
     Error error() const { return m_error; }
-    HNumber exec(const ArgumentList&);
+    Quantity exec(const ArgumentList&);
 
     void setName(const QString& name) { m_name = name; }
     void setUsage(const QString& usage) { m_usage = usage; }

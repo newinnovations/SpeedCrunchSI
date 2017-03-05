@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2004-2006 Ariya Hidayat <ariya@kde.org>
-// Copyright (C) 2007-2008, 2014 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2007-2016 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -19,67 +19,47 @@
 
 #include "math/hmath.h"
 #include "math/floatconst.h"
+#include "tests/testcommon.h"
+
+#include <QtCore/QCoreApplication>
 
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
+#include <string>
 
 using namespace std;
+typedef HNumber::Format Format;
 
 #define CHECK(x,y) check_value(__FILE__,__LINE__,#x,x,y)
-#define CHECK_FORMAT(f,p,x,y) check_format(__FILE__,__LINE__,#x,x,f,p,y)
+#define CHECK_FORMAT(f,x,y) check_format(__FILE__,__LINE__,#x,x,f,y)
 #define CHECK_PRECISE(x,y) check_precise(__FILE__,__LINE__,#x,x,y)
 #define CHECK_KNOWN_ISSUE(x,y,n) check_value(__FILE__,__LINE__,#x,x,y,n)
 
-static int hmath_total_tests  = 0;
+static int hmath_total_tests = 0;
 static int hmath_failed_tests = 0;
 static int hmath_new_failed_tests = 0;
 
-static HNumber PI;
+HNumber PI;
 
 static void check_value(const char* file, int line, const char* msg, const HNumber& n, const char* expected, int issue = 0)
 {
     ++hmath_total_tests;
-    char* result = HMath::format(n, 'f');
-    if (strcmp(result, expected)) {
-        ++hmath_failed_tests;
-        cerr << "[Line " << line << "]\t" << msg << "\tResult: " << result;
-        cerr << "\tExpected: " << expected;
-        if (issue)
-            cerr << "\t[ISSUE " << issue << "]";
-        else {
-            cerr << "\t[NEW]";
-            ++hmath_new_failed_tests;
-        }
-        cerr << endl;
-    }
-    free(result);
+    string result = HMath::format(n, HNumber::Format::Fixed()).toStdString();
+    DisplayErrorOnMismatch(file, line, msg, result, expected, hmath_failed_tests, hmath_new_failed_tests, issue);
 }
 
-static void check_format(const char* file, int line, const char* msg, const HNumber& n, char format, int prec, const char* expected)
+static void check_format(const char* file, int line, const char* msg, const HNumber& n, Format format, const char* expected)
 {
     ++hmath_total_tests;
-    char* result = HMath::format(n, format, prec);
-    if (strcmp(result, expected)) {
-        ++hmath_failed_tests;
-        cerr << file << "[" << line << "]: " << msg << endl
-             << "  Result  : " << result
-             << endl << "  Expected: " << expected << endl << endl;
-    }
-    free(result);
+    string result = HMath::format(n, format).toStdString();
+    DisplayErrorOnMismatch(file, line, msg, result, expected, hmath_failed_tests, hmath_new_failed_tests);
 }
 
 static void check_precise(const char* file, int line, const char* msg, const HNumber& n, const char* expected)
 {
     ++hmath_total_tests;
-    char* result = HMath::format(n, 'f', 50);
-    if (strcmp(result, expected)) {
-        ++hmath_failed_tests;
-        cerr << file << "[" << line << "]: " << msg << endl
-             << "  Result  : " << result << endl
-             << "  Expected: " << expected << endl << endl;
-    }
-    free(result);
+    string result = HMath::format(n, Format::Fixed() + Format::Precision(50)).toStdString();
+    DisplayErrorOnMismatch(file, line, msg, result, expected, hmath_failed_tests, hmath_new_failed_tests);
 }
 
 void test_create()
@@ -91,98 +71,103 @@ void test_create()
     // Too large or too small.
     CHECK(HNumber("1e1000000000"), "NaN");
     CHECK(HNumber("1e-1000000000"), "NaN");
-    CHECK_FORMAT('e', 2, HNumber("1e1000000000"), "NaN");
-    CHECK_FORMAT('e', 2, HNumber("1e-1000000000"), "NaN");
+    CHECK_FORMAT(Format::Scientific() + Format::Precision(2), HNumber("1e1000000000"), "NaN");
+    CHECK_FORMAT(Format::Scientific() + Format::Precision(2), HNumber("1e-1000000000"), "NaN");
 }
 
 void test_format()
 {
     // Fixed decimal digits.
-    CHECK_FORMAT('f', 0, HNumber("NaN"), "NaN");
-    CHECK_FORMAT('f', 0, HNumber("0"), "0");
-    CHECK_FORMAT('f', 0, HNumber("1.1"), "1");
-    CHECK_FORMAT('f', 1, HNumber("2.11"), "2.1");
-    CHECK_FORMAT('f', 2, HNumber("3.111"), "3.11");
-    CHECK_FORMAT('f', 1, HNumber("4.001"), "4.0");
-    CHECK_FORMAT('f', 3, HNumber("4.1111"), "4.111");
-    CHECK_FORMAT('f', 2, HNumber("3.14"), "3.14");
-    CHECK_FORMAT('f', 3, HNumber("3.14"), "3.140");
-    CHECK_FORMAT('f', 5, HNumber("3.14"), "3.14000");
-    CHECK_FORMAT('f', 7, HNumber("3.14"), "3.1400000");
-    CHECK_FORMAT('f', 7, HNumber("-0.001"), "-0.0010000");
-    CHECK_FORMAT('f', 8, HNumber("-0.001"), "-0.00100000");
-    CHECK_FORMAT('f', 9, HNumber("-0.001"), "-0.001000000");
-    CHECK_FORMAT('f', -1, HNumber("4.000000000000000000000000000000000000000000001"), "4");
+    Format f = Format::Fixed();
+    CHECK_FORMAT(f + Format::Precision(0), HNumber("NaN"), "NaN");
+    CHECK_FORMAT(f + Format::Precision(0), HNumber("0"), "0");
+    CHECK_FORMAT(f + Format::Precision(0), HNumber("1.1"), "1");
+    CHECK_FORMAT(f + Format::Precision(1), HNumber("2.11"), "2.1");
+    CHECK_FORMAT(f + Format::Precision(2), HNumber("3.111"), "3.11");
+    CHECK_FORMAT(f + Format::Precision(1), HNumber("4.001"), "4.0");
+    CHECK_FORMAT(f + Format::Precision(3), HNumber("4.1111"), "4.111");
+    CHECK_FORMAT(f + Format::Precision(2), HNumber("3.14"), "3.14");
+    CHECK_FORMAT(f + Format::Precision(3), HNumber("3.14"), "3.140");
+    CHECK_FORMAT(f + Format::Precision(5), HNumber("3.14"), "3.14000");
+    CHECK_FORMAT(f + Format::Precision(7), HNumber("3.14"), "3.1400000");
+    CHECK_FORMAT(f + Format::Precision(7), HNumber("-0.001"), "-0.0010000");
+    CHECK_FORMAT(f + Format::Precision(8), HNumber("-0.001"), "-0.00100000");
+    CHECK_FORMAT(f + Format::Precision(9), HNumber("-0.001"), "-0.001000000");
+    CHECK_FORMAT(f + Format::Precision(-1), HNumber("4.000000000000000000000000000000000000000000001"), "4");
+    CHECK_FORMAT(f + Format::Precision(-1) + Format::Hexadecimal(), HNumber("0.6"), "0x0.9999999999999999999A"); /* Issue 659 */
 
     // Engineering notation.
-    CHECK_FORMAT('n', 0, HNumber("NaN"), "NaN");
-    CHECK_FORMAT('n', 0, HNumber("0"), "0");
-    CHECK_FORMAT('n', 0, HNumber("3.14"), "3.14e0");
-    CHECK_FORMAT('n', 1, HNumber("3.14"), "3.14e0");
-    CHECK_FORMAT('n', 2, HNumber("3.14"), "3.14e0");
-    CHECK_FORMAT('n', 3, HNumber("3.14"), "3.140e0");
-    CHECK_FORMAT('n', 5, HNumber("3.14"), "3.14000e0");
-    CHECK_FORMAT('n', 7, HNumber("3.14"), "3.1400000e0");
-    CHECK_FORMAT('n', 3, HNumber("-0.001"), "-1.000e-3");
-    CHECK_FORMAT('n', 2, HNumber("0.0001"), "100.e-6");
-    CHECK_FORMAT('n', 2, HNumber("0.001"), "1.00e-3");
-    CHECK_FORMAT('n', 2, HNumber("0.01"), "10.0e-3");
-    CHECK_FORMAT('n', 2, HNumber("0.1"), "100.e-3");
-    CHECK_FORMAT('n', 2, HNumber("1"), "1.00e0");
-    CHECK_FORMAT('n', 2, HNumber("10"), "10.0e0");
-    CHECK_FORMAT('n', 2, HNumber("100"), "100.e0");
-    CHECK_FORMAT('n', 2, HNumber("1000"), "1.00e3");
-    CHECK_FORMAT('n', 2, HNumber("10000"), "10.0e3");
-    CHECK_FORMAT('n', 2, HNumber("100000"), "100.e3");
-    CHECK_FORMAT('n', 2, HNumber("1000000"), "1.00e6");
-    CHECK_FORMAT('n', 2, HNumber("10000000"), "10.0e6");
+    Format n = Format::Engineering();
+    CHECK_FORMAT(n + Format::Precision(0), HNumber("NaN"), "NaN");
+    CHECK_FORMAT(n + Format::Precision(0), HNumber("0"), "0");
+    CHECK_FORMAT(n + Format::Precision(0), HNumber("3.14"), "3.14e0");
+    CHECK_FORMAT(n + Format::Precision(1), HNumber("3.14"), "3.14e0");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("3.14"), "3.14e0");
+    CHECK_FORMAT(n + Format::Precision(3), HNumber("3.14"), "3.140e0");
+    CHECK_FORMAT(n + Format::Precision(5), HNumber("3.14"), "3.14000e0");
+    CHECK_FORMAT(n + Format::Precision(7), HNumber("3.14"), "3.1400000e0");
+    CHECK_FORMAT(n + Format::Precision(3), HNumber("-0.001"), "-1.000e-3");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("0.0001"), "100.e-6");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("0.001"), "1.00e-3");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("0.01"), "10.0e-3");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("0.1"), "100.e-3");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("1"), "1.00e0");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("10"), "10.0e0");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("100"), "100.e0");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("1000"), "1.00e3");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("10000"), "10.0e3");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("100000"), "100.e3");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("1000000"), "1.00e6");
+    CHECK_FORMAT(n + Format::Precision(2), HNumber("10000000"), "10.0e6");
 
     // Scientific notation.
-    CHECK_FORMAT('e', 0, HNumber("NaN"), "NaN");
-    CHECK_FORMAT('e', 0, HNumber("0"), "0");
-    CHECK_FORMAT('e', 0, HNumber("3.14"), "3e0");
-    CHECK_FORMAT('e', 1, HNumber("3.14"), "3.1e0");
-    CHECK_FORMAT('e', 2, HNumber("3.14"), "3.14e0");
-    CHECK_FORMAT('e', 3, HNumber("3.14"), "3.140e0");
-    CHECK_FORMAT('e', 5, HNumber("3.14"), "3.14000e0");
-    CHECK_FORMAT('e', 7, HNumber("3.14"), "3.1400000e0");
-    CHECK_FORMAT('e', 3, HNumber("-0.001"), "-1.000e-3");
-    CHECK_FORMAT('e', 2, HNumber("0.0001"), "1.00e-4");
-    CHECK_FORMAT('e', 2, HNumber("0.001"), "1.00e-3");
-    CHECK_FORMAT('e', 2, HNumber("0.01"), "1.00e-2");
-    CHECK_FORMAT('e', 2, HNumber("0.1"), "1.00e-1");
-    CHECK_FORMAT('e', 2, HNumber("1"), "1.00e0");
-    CHECK_FORMAT('e', 2, HNumber("10"), "1.00e1");
-    CHECK_FORMAT('e', 2, HNumber("100"), "1.00e2");
-    CHECK_FORMAT('e', 2, HNumber("1000"), "1.00e3");
-    CHECK_FORMAT('e', 2, HNumber("10000"), "1.00e4");
-    CHECK_FORMAT('e', 2, HNumber("100000"), "1.00e5");
-    CHECK_FORMAT('e', 2, HNumber("1000000"), "1.00e6");
-    CHECK_FORMAT('e', 2, HNumber("10000000"), "1.00e7");
+    Format e = Format::Scientific();
+    CHECK_FORMAT(e + Format::Precision(0), HNumber("NaN"), "NaN");
+    CHECK_FORMAT(e + Format::Precision(0), HNumber("0"), "0");
+    CHECK_FORMAT(e + Format::Precision(0), HNumber("3.14"), "3e0");
+    CHECK_FORMAT(e + Format::Precision(1), HNumber("3.14"), "3.1e0");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("3.14"), "3.14e0");
+    CHECK_FORMAT(e + Format::Precision(3), HNumber("3.14"), "3.140e0");
+    CHECK_FORMAT(e + Format::Precision(5), HNumber("3.14"), "3.14000e0");
+    CHECK_FORMAT(e + Format::Precision(7), HNumber("3.14"), "3.1400000e0");
+    CHECK_FORMAT(e + Format::Precision(3), HNumber("-0.001"), "-1.000e-3");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("0.0001"), "1.00e-4");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("0.001"), "1.00e-3");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("0.01"), "1.00e-2");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("0.1"), "1.00e-1");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("1"), "1.00e0");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("10"), "1.00e1");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("100"), "1.00e2");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("1000"), "1.00e3");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("10000"), "1.00e4");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("100000"), "1.00e5");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("1000000"), "1.00e6");
+    CHECK_FORMAT(e + Format::Precision(2), HNumber("10000000"), "1.00e7");
 
     // General format.
-    CHECK_FORMAT('g', -1, PI, "3.14159265358979323846");
-    CHECK_FORMAT('g', 3, HNumber("0"), "0");
-    CHECK_FORMAT('g', 3, HNumber("0.000000001"), "1.000e-9");
-    CHECK_FORMAT('g', 3, HNumber("0.00000001"), "1.000e-8");
-    CHECK_FORMAT('g', 3, HNumber("0.0000001"), "1.000e-7");
-    CHECK_FORMAT('g', 3, HNumber("0.000001"), "1.000e-6");
-    CHECK_FORMAT('g', 3, HNumber("0.00001"), "1.000e-5");
-    CHECK_FORMAT('g', 3, HNumber("0.0001"), "1.000e-4");
-    CHECK_FORMAT('g', 3, HNumber("0.001"), "0.001");
-    CHECK_FORMAT('g', 3, HNumber("0.01"), "0.010");
-    CHECK_FORMAT('g', 3, HNumber("0.1"), "0.100");
-    CHECK_FORMAT('g', 3, HNumber("10"), "10.000");
-    CHECK_FORMAT('g', 3, HNumber("100"), "100.000");
-    CHECK_FORMAT('g', 3, HNumber("1000"), "1000.000");
-    CHECK_FORMAT('g', 3, HNumber("10000"), "10000.000");
-    CHECK_FORMAT('g', 3, HNumber("100000"), "100000.000");
-    CHECK_FORMAT('g', 3, HNumber("1000000"), "1.000e6");
-    CHECK_FORMAT('g', 3, HNumber("10000000"), "1.000e7");
-    CHECK_FORMAT('g', 3, HNumber("100000000"), "1.000e8");
-    CHECK_FORMAT('g', 3, HNumber("1403.1977"), "1403.198");
-    CHECK_FORMAT('g', 3, HNumber("2604.1980"), "2604.198");
-    CHECK_FORMAT('g', 3, HNumber("2.47e4"), "24700.000");
+    Format g = Format::General();
+    CHECK_FORMAT(g + Format::Precision(-1), PI, "3.14159265358979323846");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0"), "0");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.000000001"), "1.000e-9");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.00000001"), "1.000e-8");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.0000001"), "1.000e-7");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.000001"), "1.000e-6");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.00001"), "1.000e-5");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.0001"), "1.000e-4");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.001"), "0.001");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.01"), "0.010");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("0.1"), "0.100");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("10"), "10.000");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("100"), "100.000");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("1000"), "1000.000");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("10000"), "10000.000");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("100000"), "100000.000");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("1000000"), "1.000e6");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("10000000"), "1.000e7");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("100000000"), "1.000e8");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("1403.1977"), "1403.198");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("2604.1980"), "2604.198");
+    CHECK_FORMAT(g + Format::Precision(3), HNumber("2.47e4"), "24700.000");
 }
 
 void test_op()
@@ -195,15 +180,21 @@ void test_op()
     CHECK(HNumber(1) + HNumber(10), "11");
     CHECK(HNumber(1) + HNumber(100), "101");
     CHECK(HNumber(1) + HNumber(1000), "1001");
+    CHECK(HNumber("NaN") + HNumber(1000), "NaN");
+    CHECK(HNumber(1000) + HNumber("NaN"), "NaN");
 
     // Subtraction.
     CHECK(HNumber(0) - HNumber(0), "0");
     CHECK(HNumber(1) - HNumber(0), "1");
     CHECK(HNumber(1) - HNumber(2), "-1");
+    CHECK(HNumber("NaN") - HNumber(1000), "NaN");
+    CHECK(HNumber(1000) - HNumber("NaN"), "NaN");
 
     // Division.
     CHECK(HNumber(1) / HNumber(2), "0.5");
     CHECK(HNumber(1) / HMath::sin(PI), "NaN");
+    CHECK(HNumber("NaN") / HNumber(1000), "NaN");
+    CHECK(HNumber(1000) / HNumber("NaN"), "NaN");
 
     // Division by zero.
     CHECK(HNumber(1) / HNumber(0), "NaN");
@@ -232,6 +223,8 @@ void test_op()
     CHECK(HNumber(-2)* HNumber(5), "-10");
     CHECK(HNumber(6)* HNumber(7), "42");
     CHECK(HNumber("1.5")* HNumber("1.5"), "2.25");
+    CHECK(HNumber("NaN") * HNumber(1000), "NaN");
+    CHECK(HNumber(1000) * HNumber("NaN"), "NaN");
 }
 
 void test_functions()
@@ -257,7 +250,7 @@ void test_functions()
     CHECK(HMath::floor("2.6041980"), "2");
     CHECK(HMath::floor("0.000001"), "0");
     CHECK(HMath::floor("-0.000001"), "-1");
-    CHECK_KNOWN_ISSUE(HMath::floor(HNumber(1) / 3 * 3), "1", 532);
+    CHECK(HMath::floor(HNumber(1) / 3 * 3), "1");
 
     CHECK(HMath::ceil("NaN"), "NaN");
     CHECK(HMath::ceil("0"), "0");
@@ -269,7 +262,7 @@ void test_functions()
     CHECK(HMath::ceil("2.6041980"), "3");
     CHECK(HMath::ceil("0.000001"), "1");
     CHECK(HMath::ceil("-0.000001"), "0");
-    CHECK_KNOWN_ISSUE(HMath::ceil(HMath::log(2, 128)), "7", 532);
+    CHECK(HMath::ceil(HMath::log(2, 128)), "7");
 
     CHECK(HMath::gcd("NaN", "NaN"), "NaN");
     CHECK(HMath::gcd("NaN", "5"), "NaN");
@@ -300,6 +293,13 @@ void test_functions()
     CHECK(HMath::round("-2.6041980", 2), "-2.6");
     CHECK(HMath::round("-2.6041980", 1), "-2.6");
     CHECK(HMath::round("-2.6041980", 0), "-3");
+
+    CHECK(HMath::round("0.5", 0), "0");
+    CHECK(HMath::round("1.5", 0), "2");
+    CHECK(HMath::round("2.5", 0), "2");
+    CHECK(HMath::round("3.5", 0), "4");
+    CHECK(HMath::round("-0.5", 0), "0");
+    CHECK(HMath::round("-1.5", 0), "-2");
 
     CHECK(HMath::trunc("NaN"), "NaN");
     CHECK(HMath::trunc("0"), "0");
@@ -447,6 +447,7 @@ void test_functions()
     CHECK(HMath::raise("NaN", "NaN"), "NaN");
     CHECK(HMath::raise("NaN", "0"), "NaN");
     CHECK(HMath::raise("-1", "NaN"), "NaN");
+    CHECK(HMath::raise("0", "0"), "NaN");
     CHECK(HMath::raise(10, -3), "0.001");
     CHECK(HMath::raise(10, -2), "0.01");
     CHECK(HMath::raise(10, -1), "0.1");
@@ -460,6 +461,7 @@ void test_functions()
     CHECK(HMath::raise("4", "4"), "256");
     CHECK(HMath::raise("-27", HNumber("1") / HNumber("3")), "-3");
     CHECK(HMath::raise("-27", HNumber("-1") / HNumber("3")), "-0.33333333333333333333");
+    CHECK(HMath::raise("-2", HMath::pi()), "NaN");
     CHECK_PRECISE(HMath::raise("2", "0.1"), "1.07177346253629316421300632502334202290638460497756");
     CHECK_PRECISE(HMath::raise("2", "0.2"), "1.14869835499703500679862694677792758944385088909780");
     CHECK_PRECISE(HMath::raise("2", "0.3"), "1.23114441334491628449939306916774310987613776110082");
@@ -835,6 +837,16 @@ void test_functions()
     CHECK_PRECISE(HMath::arctan("-0.6"), "-0.54041950027058415544357836460859991013514825146259");
     CHECK_PRECISE(HMath::arctan("-1.0"), "-0.78539816339744830961566084581987572104929234984378");
 
+    CHECK(HMath::arctan2(0, 0), "NaN");
+    CHECK(HMath::arctan2(0, 1), "1.57079632679489661923");
+    CHECK(HMath::arctan2(0, -1), "-1.57079632679489661923");
+    CHECK(HMath::arctan2(1, 0), "0");
+    CHECK(HMath::arctan2(-1, 0), "3.14159265358979323846");
+    CHECK(HMath::arctan2(1, 1), "0.78539816339744830962");
+    CHECK(HMath::arctan2(1, -1), "-0.78539816339744830962");
+    CHECK(HMath::arctan2(-1, 1), "2.35619449019234492885");
+    CHECK(HMath::arctan2(-1, -1), "-2.35619449019234492885");
+
     CHECK(HMath::arcsin("NaN"), "NaN");
     CHECK(HMath::arcsin("-1"), "-1.57079632679489661923");
     CHECK(HMath::arcsin("0"), "0");
@@ -885,25 +897,113 @@ void test_functions()
     CHECK_PRECISE(HMath::cosh("0.8"), "1.33743494630484459800481995820531977649392453816033");
     CHECK_PRECISE(HMath::cosh("0.9"), "1.43308638544877438784179040162404834162773784130523");
     CHECK_PRECISE(HMath::cosh("1.0"), "1.54308063481524377847790562075706168260152911236586");
+
+    CHECK(HMath::tanh("NaN"), "NaN");
+    CHECK_PRECISE(HMath::tanh("0.1"), "0.09966799462495581711830508367835218353896209577673");
+    CHECK_PRECISE(HMath::tanh("0.2"), "0.19737532022490400073815731881101566838937268384235");
+    CHECK_PRECISE(HMath::tanh("0.3"), "0.29131261245159090581822127282376592815359680491761");
+    CHECK_PRECISE(HMath::tanh("0.4"), "0.37994896225522488526774812389687331051318437437140");
+    CHECK_PRECISE(HMath::tanh("0.5"), "0.46211715726000975850231848364367254873028928033011");
+    CHECK_PRECISE(HMath::tanh("0.6"), "0.53704956699803528586182530492689670598284198771923");
+    CHECK_PRECISE(HMath::tanh("0.7"), "0.60436777711716349630868718310382647501556664741686");
+    CHECK_PRECISE(HMath::tanh("0.8"), "0.66403677026784896368484465640024285007465529270892");
+    CHECK_PRECISE(HMath::tanh("0.9"), "0.71629787019902442081144378305809486317486516460076");
+    CHECK_PRECISE(HMath::tanh("1.0"), "0.76159415595576488811945828260479359041276859725794");
+
+    CHECK(HMath::arcosh("NaN"), "NaN");
+    CHECK_PRECISE(HMath::arcosh("1.00500416805580359898797844296834164470962627785896"), "0.10000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::arcosh("1.02006675561907584629550375162935679733308609889476"), "0.20000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::arcosh("1.04533851412886048502530904632291210128027546467919"), "0.30000000000000000000000000000000000000000000000001");
+    CHECK_PRECISE(HMath::arcosh("1.08107237183845480928464293899252417629013184957412"), "0.40000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::arcosh("1.12762596520638078522622516140267201254784711809867"), "0.50000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::arcosh("1.18546521824226770375191329269771619435727538261853"), "0.60000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::arcosh("1.25516900563094301816467474099029711586260477992884"), "0.70000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::arcosh("1.33743494630484459800481995820531977649392453816033"), "0.79999999999999999999999999999999999999999999999999");
+    CHECK_PRECISE(HMath::arcosh("1.43308638544877438784179040162404834162773784130523"), "0.90000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::arcosh("1.54308063481524377847790562075706168260152911236586"), "1.00000000000000000000000000000000000000000000000000");
+
+    CHECK(HMath::artanh("NaN"), "NaN");
+    CHECK_PRECISE(HMath::artanh("0.09966799462495581711830508367835218353896209577673"), "0.10000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::artanh("0.19737532022490400073815731881101566838937268384235"), "0.20000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::artanh("0.29131261245159090581822127282376592815359680491761"), "0.30000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::artanh("0.37994896225522488526774812389687331051318437437140"), "0.40000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::artanh("0.46211715726000975850231848364367254873028928033011"), "0.50000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::artanh("0.53704956699803528586182530492689670598284198771923"), "0.60000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::artanh("0.60436777711716349630868718310382647501556664741686"), "0.70000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::artanh("0.66403677026784896368484465640024285007465529270892"), "0.80000000000000000000000000000000000000000000000001");
+    CHECK_PRECISE(HMath::artanh("0.71629787019902442081144378305809486317486516460076"), "0.90000000000000000000000000000000000000000000000000");
+    CHECK_PRECISE(HMath::artanh("0.76159415595576488811945828260479359041276859725794"), "1.00000000000000000000000000000000000000000000000001");
+
+    CHECK(HMath::decodeIeee754("NaN", "NaN", "NaN"), "NaN");
+    CHECK(HMath::decodeIeee754("1", "-1", "1"), "NaN");
+    CHECK(HMath::decodeIeee754("1", "1", "0"), "NaN");
+    CHECK(HMath::decodeIeee754("1", "1.5", "1"), "NaN");
+    CHECK(HMath::decodeIeee754("0", "5", "10"), "0");
+    CHECK(HMath::decodeIeee754("0x7ff00000", "8", "23"), "NaN");
+    CHECK(HMath::decodeIeee754("0xffc0feed", "8", "23"), "NaN");
+    CHECK(HMath::decodeIeee754("0x7fffffff", "8", "23"), "NaN");
+    CHECK(HMath::decodeIeee754("0x8000", "5", "10"), "0");
+    CHECK_PRECISE(HMath::decodeIeee754("0x00800000", "8", "23"), "0.00000000000000000000000000000000000001175494350822");
+    CHECK_PRECISE(HMath::decodeIeee754("0x006f6eed", "8", "23"), "0.00000000000000000000000000000000000001023353274603");
+    CHECK(HMath::decodeIeee754("0x41200000", "8", "23"), "10");
+    CHECK(HMath::decodeIeee754("0xc1200000", "8", "23"), "-10");
+    CHECK(HMath::decodeIeee754("0x3fc00000", "8", "23"), "1.5");
+    CHECK_PRECISE(HMath::decodeIeee754("0x3dcccccd", "8", "23"), "0.10000000149011611938476562500000000000000000000000");
+    CHECK(HMath::decodeIeee754("0x7f7fffff", "8", "23"), "340282346638528859811704183484516925440");
+    CHECK(HMath::decodeIeee754("0x418100b9", "8", "23"), "16.1253528594970703125");
+    CHECK(HMath::decodeIeee754("0x4024000000000000", "11", "52"), "10");
+    CHECK(HMath::decodeIeee754("0x01", "4", "3", "-2"), "1");
+    CHECK(HMath::decodeIeee754("0x07", "4", "3", "-2"), "7");
+    CHECK(HMath::decodeIeee754("0x08", "4", "3", "-2"), "8");
+    CHECK(HMath::decodeIeee754("0xf1", "4", "3", "-2"), "-73728");
+    CHECK(HMath::decodeIeee754("0x77", "4", "3", "-2"), "122880");
+    CHECK(HMath::decodeIeee754("0x5", "2", "1"), "3");
+    CHECK_PRECISE(HMath::decodeIeee754("0x3ffd5555555555555555555555555555", "15", "112"), "0.33333333333333333333333333333333331728391713010637");
+
+    CHECK(HMath::encodeIeee754("NaN", "NaN", "NaN"), "NaN");
+    CHECK(HMath::encodeIeee754("1", "NaN", "NaN"), "NaN");
+    CHECK(HMath::encodeIeee754("1", "-1", "1"), "NaN");
+    CHECK(HMath::encodeIeee754("1", "1", "0"), "NaN");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("NaN", "5", "10"), "0x7FFF");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("NaN", "11", "52"), "0x7FFFFFFFFFFFFFFF");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("0", "5", "10"), "0");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("1.17549435E-38", "8", "23"), "0x800000");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("10", "8", "23"), "0x41200000");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("-10", "8", "23"), "0xC1200000");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("1.5", "8", "23"), "0x3FC00000");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("340282346638528859811704183484516925440","8", "23"), "0x7F7FFFFF");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("9999999999999999999999999999999999", "5", "10"), "0x7C00");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("-0.1", "8", "23"), "0xBDCCCCCD");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("-0.1", "11", "52"), "0xBFB999999999999A");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("16.1253528594970703125", "8", "23"), "0x418100B9");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("1", "4", "3", "-2"), "0x1");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("7", "4", "3", "-2"), "0x7");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("8", "4", "3", "-2"), "0x8");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("-73728", "4", "3", "-2"), "0xF1");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("122880", "4", "3", "-2"), "0x77");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("3", "2", "1"), "0x5");
+    CHECK_FORMAT(Format::Fixed() + Format::Hexadecimal(), HMath::encodeIeee754("1.5", "2", "1"), "0x3");
 }
 
 int main(int argc, char* argv[])
 {
+    QCoreApplication app(argc, argv);
+
     hmath_total_tests  = 0;
     hmath_failed_tests = 0;
 
     floatmath_init();
-    PI  = HMath::pi();
+    PI = HMath::pi();
 
     test_create();
     test_format();
     test_op();
     test_functions();
 
-    if (hmath_failed_tests)
-        cerr << hmath_total_tests  << " total, "
-             << hmath_failed_tests << " failed, "
-             << hmath_new_failed_tests << " new" << endl;
-
-  return hmath_failed_tests;
+    if (!hmath_failed_tests)
+        return 0;
+    cout << hmath_total_tests  << " total, "
+         << hmath_failed_tests << " failed, "
+         << hmath_new_failed_tests << " new" << endl;
+    return hmath_new_failed_tests;
 }

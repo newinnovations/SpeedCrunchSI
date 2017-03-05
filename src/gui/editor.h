@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2004, 2005, 2007 Ariya Hidayat <ariya@kde.org>
-// Copyright (C) 2007-2009, 2013, 2014 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2007-2016 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -20,13 +20,16 @@
 #ifndef GUI_EDITOR_H
 #define GUI_EDITOR_H
 
+#include "core/sessionhistory.h"
+
 #include <QPlainTextEdit>
 
 struct Constant;
 class ConstantCompletion;
 class EditorCompletion;
 class Evaluator;
-class HNumber;
+class Session;
+class CNumber;
 class SyntaxHighlighter;
 
 class QEvent;
@@ -41,30 +44,29 @@ class Editor : public QPlainTextEdit {
     Q_OBJECT
 
 public:
-    explicit Editor(QWidget* parent = 0);
+    explicit Editor(QWidget* parent = nullptr);
 
     bool isAutoCalcEnabled() const;
     bool isAutoCompletionEnabled() const;
     void clearHistory();
     int cursorPosition() const;
     void doBackspace();
-    QStringList history() const;
-    QStringList historyResults() const;
     char radixChar() const;
     void setAnsAvailable(bool);
     void setAutoCalcEnabled(bool);
     void setAutoCompletionEnabled(bool);
     void setCursorPosition(int pos);
     void setText(const QString&);
-    void setHistory(const QStringList&);
-    void setHistoryResults(const QStringList&);
-    QSize sizeHint() const;
     void stopAutoCalc();
     void stopAutoComplete();
+    void wrapSelection();
     QString text() const;
+    QStringList matchFragment(const QString&) const;
+    QString getKeyword() const;
 
 signals:
-    void autoCalcEnabled(const QString&);
+    void autoCalcMessageAvailable(const QString&);
+    void autoCalcQuantityAvailable(const Quantity&);
     void autoCalcDisabled();
     void controlPageDownPressed();
     void controlPageUpPressed();
@@ -78,8 +80,7 @@ signals:
     void shiftPageUpPressed();
 
 public slots:
-    void appendHistory(const QString& result, const QString& expression);
-    void appendHistory(const QStringList& expressions, const QStringList& results);
+    void autoCalcSelection(const QString& custom = QString::null);
     void cancelConstantCompletion();
     void evaluate();
     void decreaseFontPointSize();
@@ -87,11 +88,11 @@ public slots:
     void insert(const QString&);
     void insertConstant(const QString&);
     void rehighlight();
+    void updateHistory();
 
 protected slots:
-    virtual void insertFromMimeData(const QMimeData*);
+    void insertFromMimeData(const QMimeData*) override;
     void autoCalc();
-    void autoCalcSelection();
     void autoComplete(const QString&);
     void checkAutoCalc();
     void checkAutoComplete();
@@ -106,18 +107,21 @@ protected slots:
     void triggerEnter();
 
 protected:
-    virtual void changeEvent(QEvent*);
-    virtual void focusOutEvent(QFocusEvent*);
-    virtual void keyPressEvent(QKeyEvent*);
-    virtual void paintEvent(QPaintEvent*);
-    virtual void wheelEvent(QWheelEvent*);
+    void changeEvent(QEvent*) override;
+    void focusOutEvent(QFocusEvent*) override;
+    void keyPressEvent(QKeyEvent*) override;
+    void paintEvent(QPaintEvent*) override;
+    void scrollContentsBy(int, int) override;
+    QSize sizeHint() const override;
+    void wheelEvent(QWheelEvent*) override;
 
 private:
     Q_DISABLE_COPY(Editor)
 
     bool m_isAnsAvailable;
     bool m_isAutoCalcEnabled;
-    QTimer* m_autoCalcSelTimer;
+    bool m_shouldBlockAutoCompletionOnce = false;
+    QTimer* m_autoCalcSelectionTimer;
     QTimer* m_autoCalcTimer;
     bool m_isAutoCompletionEnabled;
     EditorCompletion* m_completion;
@@ -125,12 +129,12 @@ private:
     ConstantCompletion* m_constantCompletion;
     Evaluator* m_evaluator;
     SyntaxHighlighter* m_highlighter;
-    QStringList m_history;
-    QStringList m_historyResults;
+    QList<HistoryEntry> m_history;
     QString m_savedCurrentEditor;
     int m_currentHistoryIndex;
     QTimer* m_matchingTimer;
     bool m_shouldPaintCustomCursor;
+    const Session * m_session;
 };
 
 class EditorCompletion : public QObject {

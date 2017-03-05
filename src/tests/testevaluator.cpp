@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2004-2006 Ariya Hidayat <ariya@kde.org>
-// Copyright (C) 2007-2009, 2013 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2007-2009, 2013, 2016 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -19,16 +19,19 @@
 
 #include "core/evaluator.h"
 #include "core/settings.h"
+#include "tests/testcommon.h"
 
 #include <QtCore/QCoreApplication>
 
-#include <cstring>
+#include <string>
 #include <iostream>
 
 using namespace std;
 
+typedef Quantity::Format Format;
+
 static Evaluator* eval = 0;
-static int eval_total_tests  = 0;
+static int eval_total_tests = 0;
 static int eval_failed_tests = 0;
 static int eval_new_failed_tests = 0;
 
@@ -41,18 +44,12 @@ static int eval_new_failed_tests = 0;
 #define CHECK_USERFUNC_SET(x) checkEval(__FILE__,__LINE__,#x,x,"NaN")
 #define CHECK_USERFUNC_SET_FAIL(x) checkEval(__FILE__,__LINE__,#x,x,"",0,true)
 
-static void checkAutoFix(const char* file, int line, const char* msg, const QString& expr, const QString& fixed)
+static void checkAutoFix(const char* file, int line, const char* msg, const char* expr, const char* fixed)
 {
     ++eval_total_tests;
 
-    QString r = eval->autoFix(expr);
-    if (r != fixed) {
-        eval_failed_tests++;
-        cerr << file << "[" << line << "]: " << msg << endl
-             << "    Result: \"" << qPrintable(r) << "\"" << endl
-             << "  Expected: \"" << qPrintable(fixed) << "\"" << endl
-             << endl;
-    }
+    string r = eval->autoFix(QString(expr)).toStdString();
+    DisplayErrorOnMismatch(file, line, msg, r, fixed, eval_failed_tests, eval_new_failed_tests);
 }
 
 static void checkDivisionByZero(const char* file, int line, const char* msg, const QString& expr)
@@ -60,11 +57,12 @@ static void checkDivisionByZero(const char* file, int line, const char* msg, con
     ++eval_total_tests;
 
     eval->setExpression(expr);
-    HNumber rn = eval->evalUpdateAns();
+    Quantity rn = eval->evalUpdateAns();
 
     if (eval->error().isEmpty()) {
         ++eval_failed_tests;
-        cerr << "[" << line << "]:\t" << msg << "  Error: " << "division by zero not caught" << endl;
+        cerr << file << "[" << line << "]\t" << msg << endl
+             << "\tError: " << "division by zero not caught" << endl;
     }
 }
 
@@ -73,19 +71,12 @@ static void checkEval(const char* file, int line, const char* msg, const QString
     ++eval_total_tests;
 
     eval->setExpression(expr);
-    HNumber rn = eval->evalUpdateAns();
+    Quantity rn = eval->evalUpdateAns();
 
     if (!eval->error().isEmpty()) {
         if (!shouldFail) {
             ++eval_failed_tests;
-            cerr << "[Line " << line << "]\t:" << msg << "  Error: " << qPrintable(eval->error()) << endl;
-        }
-    } else {
-        char* result = HMath::format(rn, 'f');
-        if (shouldFail || strcmp(result, expected)) {
-            ++eval_failed_tests;
-            cerr << "[Line " << line << "]\t" << msg << "\tResult: " << result;
-            cerr << "\tExpected: " << (shouldFail ? "should fail" : expected);
+            cerr << file << "[" << line << "]\t" << msg;
             if (issue)
                 cerr << "\t[ISSUE " << issue << "]";
             else {
@@ -93,8 +84,23 @@ static void checkEval(const char* file, int line, const char* msg, const QString
                 ++eval_new_failed_tests;
             }
             cerr << endl;
+            cerr << "\tError: " << qPrintable(eval->error()) << endl;
         }
-        free(result);
+    } else {
+        QString result = DMath::format(rn, Format::Fixed());
+        if (shouldFail || result != expected) {
+            ++eval_failed_tests;
+            cerr << file << "[" << line << "]\t" << msg;
+            if (issue)
+                cerr << "\t[ISSUE " << issue << "]";
+            else {
+                cerr << "\t[NEW]";
+                ++eval_new_failed_tests;
+            }
+            cerr << endl;
+            cerr << "\tResult   : " << result.toLatin1().constData() << endl
+                 << "\tExpected : " << (shouldFail ? "should fail" : expected) << endl;
+        }
     }
 }
 
@@ -103,16 +109,12 @@ static void checkEvalPrecise(const char* file, int line, const char* msg, const 
     ++eval_total_tests;
 
     eval->setExpression(expr);
-    HNumber rn = eval->evalUpdateAns();
+    Quantity rn = eval->evalUpdateAns();
 
     // We compare up to 50 decimals, not exact number because it's often difficult
     // to represent the result as an irrational number, e.g. PI.
-    char* result = HMath::format(rn, 'f', 50);
-    if (strcmp(result, expected)) {
-        ++eval_failed_tests;
-        cerr << "[Line" << line <<"]:\t" << msg << "  Result: " << result << ", "<< "Expected: " << expected << endl;
-    }
-    free(result);
+    string result = DMath::format(rn, Format::Fixed() + Format::Precision(50)).toStdString();
+    DisplayErrorOnMismatch(file, line, msg, result, expected, eval_failed_tests, eval_new_failed_tests, 0);
 }
 
 void test_constants()
@@ -135,31 +137,11 @@ void test_unary()
     CHECK_EVAL("--ABS(-3)", "3");
     CHECK_EVAL("---ABS(-4)", "-4");
 
-    // See http://en.wikipedia.org/wiki/Empty_product.
-    CHECK_EVAL("0^0", "NaN");
-
-    CHECK_EVAL("1^0", "1");
-    CHECK_EVAL("1^1", "1");
-    CHECK_EVAL("1^2", "1");
-    CHECK_EVAL("1^3", "1");
-
     // Operator ^ has higher precedence than unary minus.
     CHECK_EVAL("-1^0", "-1");
     CHECK_EVAL("-1^1", "-1");
     CHECK_EVAL("-1^2", "-1");
     CHECK_EVAL("-1^3", "-1");
-
-    CHECK_EVAL("2^0", "1");
-    CHECK_EVAL("2^1", "2");
-    CHECK_EVAL("2^2", "4");
-    CHECK_EVAL("2^3", "8");
-    CHECK_EVAL("2^4", "16");
-    CHECK_EVAL("2^5", "32");
-    CHECK_EVAL("2^6", "64");
-    CHECK_EVAL("2^7", "128");
-    CHECK_EVAL("2^8", "256");
-    CHECK_EVAL("2^9", "512");
-    CHECK_EVAL("2^10", "1024");
 
     CHECK_EVAL("-2^0", "-1");
     CHECK_EVAL("-2^1", "-2");
@@ -179,9 +161,10 @@ void test_unary()
     CHECK_EVAL("-cos(pi)^3", "1");
     CHECK_EVAL("1*(-cos(pi)^2)", "-1");
 
-    CHECK_EVAL_KNOWN_ISSUE("3^3^3", "19683", 448);
-    CHECK_EVAL_KNOWN_ISSUE("1/-1^2", "-1", 450);
-    CHECK_EVAL_KNOWN_ISSUE("1*-1^2", "-1", 450);
+    CHECK_EVAL("3^3^3", "7625597484987");
+
+    CHECK_EVAL("1/-1^2", "-1");
+    CHECK_EVAL("1*-1^2", "-1");
 
     // Factorial has higher precedence than unary minus.
     CHECK_EVAL("-1!", "-1");
@@ -191,10 +174,65 @@ void test_unary()
 
 void test_binary()
 {
+    // See http://en.wikipedia.org/wiki/Empty_product.
+    CHECK_EVAL("0^0", "NaN");
+
+    CHECK_EVAL("1^0", "1");
+    CHECK_EVAL("1^1", "1");
+    CHECK_EVAL("1^2", "1");
+    CHECK_EVAL("1^3", "1");
+
+    CHECK_EVAL("2^0", "1");
+    CHECK_EVAL("2^1", "2");
+    CHECK_EVAL("2^2", "4");
+    CHECK_EVAL("2^3", "8");
+    CHECK_EVAL("2^4", "16");
+    CHECK_EVAL("2^5", "32");
+    CHECK_EVAL("2^6", "64");
+    CHECK_EVAL("2^7", "128");
+    CHECK_EVAL("2^8", "256");
+    CHECK_EVAL("2^9", "512");
+    CHECK_EVAL("2^10", "1024");
+
     CHECK_EVAL("0+0", "0");
     CHECK_EVAL("1+0", "1");
     CHECK_EVAL("0+1", "1");
     CHECK_EVAL("1+1", "2");
+
+    CHECK_EVAL("0-0", "0");
+    CHECK_EVAL("1-0", "1");
+    CHECK_EVAL("0-1", "-1");
+    CHECK_EVAL("1-1", "0");
+
+    CHECK_EVAL("0−0", "0");
+    CHECK_EVAL("1−0", "1");
+    CHECK_EVAL("0−1", "-1");
+    CHECK_EVAL("1−1", "0");
+
+    CHECK_EVAL("2*3", "6");
+    CHECK_EVAL("2×3", "6");
+    CHECK_EVAL("2⋅3", "6"); // U+22C5 Dot operator.
+    CHECK_EVAL("3*2", "6");
+    CHECK_EVAL("3×2", "6");
+    CHECK_EVAL("3⋅2", "6");
+
+    CHECK_EVAL("10/2", "5");
+    CHECK_EVAL("10÷2", "5");
+    CHECK_EVAL("2/10", "0.2");
+    CHECK_EVAL("2÷10", "0.2");
+
+    // Check that parentheses are added in unit conversion results when needed
+    CHECK_EVAL("1 meter -> 10 meter", "0.1 (10 meter)");
+    CHECK_EVAL("1 meter -> .1 meter", "10 (.1 meter)");
+    CHECK_EVAL("1 meter -> -1 meter", "-1 (-1 meter)");
+    CHECK_EVAL("1 meter -> 0xa meter", "0.1 (0xa meter)");
+    CHECK_EVAL("1 meter second -> 10 meter second", "0.1 (10 meter second)");
+    CHECK_EVAL("1 meter second -> meter 10 second", "0.1 meter 10 second");
+    CHECK_EVAL("1 meter second -> meter second 10", "0.1 (meter second 10)");
+    CHECK_EVAL("1 meter -> meter + meter", "0.5 (meter + meter)");
+    CHECK_EVAL("1 meter -> meter - 2 meter", "-1 (meter - 2 meter)");
+    CHECK_EVAL("1 meter -> meter", "1 meter");
+    CHECK_EVAL("1 (10 meter) -> meter", "10 meter");
 }
 
 void test_divide_by_zero()
@@ -217,6 +255,12 @@ void test_divide_by_zero()
 
 void test_radix_char()
 {
+    // Backup current settings
+    Settings* settings = Settings::instance();
+    char radixCharacter = settings->radixCharacter();
+
+    settings->setRadixCharacter('*');
+
     CHECK_EVAL("1+.5", "1.5");
     CHECK_EVAL("1+,5", "1.5");
     CHECK_EVAL(".5*,5", "0.25");
@@ -232,14 +276,60 @@ void test_radix_char()
 
     CHECK_EVAL("0x.f + 1", "1.9375");
     CHECK_EVAL("-0x.f + 1", "0.0625");
+
+    CHECK_EVAL("1/.1", "10"); // ISSUE 151
+    CHECK_EVAL("1/,1", "10"); // ISSUE 151
+
+    // Test automatic detection of radix point when multiple choices are possible
+    CHECK_EVAL("1,234.567", "1234.567");
+    CHECK_EVAL("1.234,567", "1234.567");
+    CHECK_EVAL("1,2,3", "123");
+    CHECK_EVAL("1.2.3", "123");
+    CHECK_EVAL("1,234,567.89", "1234567.89");
+    CHECK_EVAL("1.234.567,89", "1234567.89");
+    CHECK_EVAL("1,234.567,89", "1234.56789");
+    CHECK_EVAL("1.234,567.89", "1234.56789");
+
+    settings->setRadixCharacter('.');
+
+    CHECK_EVAL("1+0.5", "1.5");
+    CHECK_EVAL("1+0,5", "6");
+    CHECK_EVAL("1/.1", "10");
+    CHECK_EVAL("1/,1", "1");
+    CHECK_EVAL("1,234.567", "1234.567");
+    CHECK_EVAL("1.234,567", "1.234567");
+    CHECK_EVAL("1,2,3", "123");
+    CHECK_EVAL("1.2.3", "123");
+    CHECK_EVAL("1,234,567.89", "1234567.89");
+    CHECK_EVAL("1.234.567,89", "123456789");
+    CHECK_EVAL("1,234.567,89", "1234.56789");
+    CHECK_EVAL("1.234,567.89", "123456789");
+
+    settings->setRadixCharacter(',');
+
+    CHECK_EVAL("1+0.5", "6");
+    CHECK_EVAL("1+0,5", "1.5");
+    CHECK_EVAL("1/.1", "1");
+    CHECK_EVAL("1/,1", "10");
+    CHECK_EVAL("1,234.567", "1.234567");
+    CHECK_EVAL("1.234,567", "1234.567");
+    CHECK_EVAL("1,2,3", "123");
+    CHECK_EVAL("1.2.3", "123");
+    CHECK_EVAL("1,234,567.89", "123456789");
+    CHECK_EVAL("1.234.567,89", "1234567.89");
+    CHECK_EVAL("1,234.567,89", "123456789");
+    CHECK_EVAL("1.234,567.89", "1234.56789");
+
+    // Restore old settings
+    settings->setRadixCharacter(radixCharacter);
 }
 
-void test_thoushand_sep()
+void test_thousand_sep()
 {
     CHECK_EVAL("12'345.678'9", "12345.6789");
     CHECK_EVAL("1234'5.67'89", "12345.6789");
     CHECK_EVAL("1234'56", "123456");
-    //CHECK_EVAL("'123456", "123456");  // FIXME: should not fail?
+    CHECK_EVAL("'123456", "123456");
     CHECK_EVAL("123456'", "123456");
     CHECK_EVAL("123'''456", "123456");
     CHECK_EVAL(".'123456", "0.123456");
@@ -254,28 +344,10 @@ void test_thoushand_sep()
 
     CHECK_EVAL("12$345.678~9", "12345.6789");
     CHECK_EVAL("12`345.678@9", "12345.6789");
-}
-
-void test_thoushand_sep_strict()
-{
-    CHECK_EVAL("12'345.678'9", "12345.6789");
-    CHECK_EVAL("1234'5.67'89", "12345.6789");
-    CHECK_EVAL("1234'56", "123456");
-    //CHECK_EVAL("'123456", "123456");  // FIXME: should not fail?
-    CHECK_EVAL("123456'", "123456");
-    CHECK_EVAL("123'''456", "123456");
-    CHECK_EVAL(".'123456", "0.123456");
-
-    CHECK_EVAL("12 345.678 9", "12345.6789");
-    CHECK_EVAL("12_345.678_9", "12345.6789");
-    CHECK_EVAL(QString::fromUtf8("12·345.678·9"), "12345.6789");
-    CHECK_EVAL(QString::fromUtf8("12٫345.678٫9"), "12345.6789");
-    CHECK_EVAL(QString::fromUtf8("12٬345.678٬9"), "12345.6789");
-    CHECK_EVAL(QString::fromUtf8("12˙345.678˙9"), "12345.6789");
-    CHECK_EVAL(QString::fromUtf8("12⎖345.678⎖9"), "12345.6789");
-
-    CHECK_EVAL_FAIL("12$345.678~9");
-    CHECK_EVAL_FAIL("12`345.678@9");
+    CHECK_EVAL("$ 1234.567", "1234.567");
+    CHECK_EVAL("1234.567 $", "1234.567");
+    CHECK_EVAL("$-10", "-10");
+    CHECK_EVAL("$+10", "10");
 }
 
 void test_function_basic()
@@ -320,14 +392,20 @@ void test_function_basic()
     CHECK_EVAL("6!", "720");
     CHECK_EVAL("7!", "5040");
     CHECK_EVAL("(1+1)!^2", "4");
-    CHECK_EVAL_KNOWN_ISSUE("frac 3!", "0", 451);
-
-    CHECK_EVAL_KNOWN_ISSUE("lg 10^2", "2", 451);
 
     CHECK_EVAL("(-27)^(1/3)", "-3");
     CHECK_EVAL("(-27)^(-1/3)", "-0.33333333333333333333");
 
     CHECK_EVAL_PRECISE("exp((1)/2) + exp((1)/2)", "3.29744254140025629369730157562832714330755220142030");
+
+    // Test functions composition
+    CHECK_EVAL("log(10;log(10;1e100))", "2");
+    CHECK_EVAL("log(10;abs(-100))", "2");
+    CHECK_EVAL("abs(log(10;100))", "2");
+    CHECK_EVAL("abs(abs(-100))", "100");
+    CHECK_EVAL("sum(10;abs(-100);1)", "111");
+    CHECK_EVAL("sum(abs(-100);10;1)", "111");
+    CHECK_EVAL("sum(10;1;abs(-100))", "111");
 }
 
 void test_function_trig()
@@ -363,6 +441,10 @@ void test_function_trig()
 
     CHECK_EVAL("arcsin(sin(1))", "1");
     CHECK_EVAL("arccos(cos(1))", "1");
+    CHECK_EVAL("arctan(tan(1))", "1");
+    CHECK_EVAL("arcsin(0)", "0");
+    CHECK_EVAL("arccos(1)", "0");
+    CHECK_EVAL("arctan(0)", "0");
 
     CHECK_EVAL("degrees(0)", "0");
     CHECK_EVAL("degrees(pi/2)", "90");
@@ -437,9 +519,9 @@ void test_function_stat()
     CHECK_EVAL("AVERAGE(2.25;4.75)", "3.5");
     CHECK_EVAL("AVERAGE(1/3;2/3)", "0.5");
 
-    CHECK_EVAL("GEOMEAN(0)", "NaN");
-    CHECK_EVAL("GEOMEAN(-1)", "NaN");
-    CHECK_EVAL("GEOMEAN(-1e20)", "NaN");
+    CHECK_EVAL_FAIL("GEOMEAN(0)");
+    CHECK_EVAL_FAIL("GEOMEAN(-1)");
+    CHECK_EVAL_FAIL("GEOMEAN(-1e20)");
     CHECK_EVAL("GEOMEAN(1)", "1");
     CHECK_EVAL("GEOMEAN(2)", "2");
     CHECK_EVAL("GEOMEAN(3)", "3");
@@ -452,7 +534,11 @@ void test_function_stat()
     CHECK_EVAL("GEOMEAN(3;4;18)", "6");
     CHECK_EVAL("GEOMEAN(1;1;1)", "1");
     CHECK_EVAL("GEOMEAN(1;1;1;1)", "1");
-    CHECK_EVAL("GEOMEAN(1;1;1;-1)", "NaN");
+    CHECK_EVAL_FAIL("GEOMEAN(1;1;1;-1)");
+
+    CHECK_EVAL("VARIANCE(1;-1)", "1");
+    CHECK_EVAL("VARIANCE(5 meter; 13 meter)", "16 meter²");
+    // for complex tests of VARIANCE see test_complex
 }
 
 void test_function_logic()
@@ -542,6 +628,35 @@ void test_function_discrete()
     CHECK_EVAL("ncr(4;5)", "0");
 }
 
+void test_function_simplified()
+{
+    /* Tests for standard functions */
+    CHECK_EVAL("abs 123", "123");
+    CHECK_EVAL("abs -123", "123");       /* (issue #600) */
+    CHECK_EVAL("10 + abs 123", "133");
+    CHECK_EVAL("10 + abs -123", "133");  /* (issue #600) */
+    CHECK_EVAL("abs 123 + 10", "133");
+    CHECK_EVAL("abs -123 + 10", "133");  /* (issue #600) */
+    CHECK_EVAL("10 * abs 123", "1230");
+    CHECK_EVAL("abs 123 * 10", "1230");
+    /* Tests for user functions (issue #600, cf. discussion) */
+    CHECK_USERFUNC_SET("func2(x) = abs(x)");
+    CHECK_EVAL("func2 123", "123");
+    CHECK_EVAL("func2 -123", "123");
+    CHECK_EVAL("10 + func2 123", "133");
+    CHECK_EVAL("10 + func2 -123", "133");
+    CHECK_EVAL("func2 123 + 10", "133");
+    CHECK_EVAL("func2 -123 + 10", "133");
+    CHECK_EVAL("10 * func2 123", "1230");
+    CHECK_EVAL("func2 123 * 10", "1230");
+    CHECK_USERFUNC_SET("f(x) = 5 meter + x"); /* (issue #656)  */
+    CHECK_EVAL("f(2 meter)", "7 meter");      /* (issue #656)  */
+    CHECK_EVAL_FAIL("f(2)");                  /* (issue #656)  */
+    /* Tests for priority management (issue #451) */
+    CHECK_EVAL("lg 10^2", "2");
+    CHECK_EVAL("frac 3!",  "0");
+}
+
 void test_auto_fix_parentheses()
 {
     CHECK_AUTOFIX("sin(1)", "sin(1)");
@@ -584,6 +699,15 @@ void test_auto_fix_untouch()
     CHECK_AUTOFIX("tan(ans)", "tan(ans)");
     CHECK_AUTOFIX("x=1.2", "x=1.2");
     CHECK_AUTOFIX("1/sin pi", "1/sin pi");
+}
+
+void test_auto_fix_powers()
+{
+    CHECK_AUTOFIX("3¹", "3^1");
+    CHECK_AUTOFIX("3⁻¹", "3^(-1)");
+    CHECK_AUTOFIX("3¹²³⁴⁵⁶⁷⁸⁹", "3^123456789");
+    CHECK_AUTOFIX("3²⁰", "3^20");
+    CHECK_AUTOFIX("7 + 3²⁰ * 4", "7 + 3^20 * 4");
 }
 
 void test_comments()
@@ -653,6 +777,114 @@ void test_user_functions()
     CHECK_EVAL("func1()", "20");    // = 2 * 5
 }
 
+void test_complex()
+{
+    // Check for basic complex number processing
+    CHECK_EVAL("1j", "1j");
+    CHECK_EVAL("0.1j", "0.1j");
+    CHECK_EVAL(".1j", "0.1j");
+    CHECK_EVAL("1E12j", "1000000000000j");
+    CHECK_EVAL("0.1E12j", "100000000000j");
+    CHECK_EVAL("1E-12j", "0.000000000001j");
+    CHECK_EVAL("0.1E-12j", "0.0000000000001j");
+    // Check for some bugs introduced by first versions of complex number processing
+    CHECK_EVAL("0.1", "0.1");
+    // Check for basic complex number evaluation
+    CHECK_EVAL("(1+1j)*(1-1j)", "2");
+    CHECK_EVAL("(1+1j)*(1+1j)", "2j");
+
+
+    CHECK_EVAL("VARIANCE(1j;-1j)", "1");
+    CHECK_EVAL("VARIANCE(1j;-1j;1;-1)", "1");
+    CHECK_EVAL("VARIANCE(2j;-2j;1;-1)", "2.5");
+}
+
+void test_angle_mode(Settings* settings)
+{
+    settings->angleUnit = 'r';
+    Evaluator::instance()->initializeAngleUnits();
+    CHECK_EVAL("sin(pi)", "0");
+    CHECK_EVAL("arcsin(-1)", "-1.57079632679489661923");
+    CHECK_EVAL("sin(1j)", "1.17520119364380145688j");
+    CHECK_EVAL("arcsin(-2)", "-1.57079632679489661923+1.31695789692481670863j");
+    CHECK_EVAL("radian","1");
+    CHECK_EVAL("degree","0.01745329251994329577");
+
+
+    settings->angleUnit = 'd';
+    Evaluator::instance()->initializeAngleUnits();
+    CHECK_EVAL("sin(180)", "0");
+    CHECK_EVAL("arcsin(-1)", "-90");
+    CHECK_EVAL_FAIL("sin(1j)");
+    CHECK_EVAL_FAIL("arcsin(-2)");
+    CHECK_EVAL("radian","57.2957795130823208768");
+    CHECK_EVAL("degree","1");
+}
+
+void test_implicit_multiplication()
+{
+    CHECK_EVAL("a = 5", "5");
+    CHECK_EVAL("5 a", "25");
+    CHECK_EVAL("5. a", "25");
+    CHECK_EVAL("5.0 a", "25");
+    CHECK_EVAL("5e2 a", "2500");
+    CHECK_EVAL_FAIL("a5");
+    CHECK_EVAL("a 5", "25");
+    CHECK_EVAL("2 a^3", "250");
+    CHECK_EVAL("b=2", "2");
+    CHECK_EVAL_FAIL("ab");
+    CHECK_EVAL("a b", "10");
+    CHECK_EVAL("eps = 10", "10");
+    CHECK_EVAL("5 eps", "50");
+    CHECK_EVAL("Eren = 1001", "1001");
+    CHECK_EVAL("7 Eren", "7007");
+    CHECK_EVAL("Eren 5", "5005");
+    CHECK_EVAL("f() = 123", "123");
+    CHECK_EVAL("2 f()", "246");
+    CHECK_EVAL("5   5", "55");
+
+    // Check implicit multiplication between numbers fails
+    // CHECK_EVAL_FAIL("10.   0.2");
+    CHECK_EVAL_FAIL("10 0x10");
+    CHECK_EVAL_FAIL("10 #10");
+    CHECK_EVAL_FAIL("0b104");
+    CHECK_EVAL_FAIL("0b10 4");
+    CHECK_EVAL_FAIL("0b10 0x4");
+    CHECK_EVAL_FAIL("0o109");
+    CHECK_EVAL_FAIL("0o10 9");
+    CHECK_EVAL_FAIL("0o10 0x9");
+    // CHECK_EVAL_FAIL("12.12.12");
+    CHECK_EVAL_FAIL("12e12.12");
+    CHECK_EVAL("0b10a", "10");
+    CHECK_EVAL("0o2a", "10");
+    CHECK_EVAL("5(5)", "25");
+
+    CHECK_EVAL("a sin(pi/2)", "5");
+    CHECK_EVAL("a sqrt(4)",   "10");
+    CHECK_EVAL("a sqrt(a^2)", "25");
+
+    /* Tests issue 538 */
+    /* 3 sin (3 pi) was evaluated but not 3 sin (3) */
+    CHECK_EVAL("3 sin (3 pi)", "0");
+    CHECK_EVAL("3 sin (3)",    "0.4233600241796016663");
+
+    CHECK_EVAL("2 (2 + 1)", "6");
+    CHECK_EVAL("2 (a)", "10");
+
+    /* Tests issue 598 */
+    CHECK_EVAL("2(a)^3", "250");
+}
+
+void test_format()
+{
+    CHECK_EVAL("bin(123)", "0b1111011");
+    CHECK_EVAL("oct(123)", "0o173");
+    CHECK_EVAL("hex(123)", "0x7B");
+
+    CHECK_EVAL("polar(3+4j)", "5 * exp(j*0.92729521800161223243)");
+}
+
+
 int main(int argc, char* argv[])
 {
     QCoreApplication app(argc, argv);
@@ -660,10 +892,12 @@ int main(int argc, char* argv[])
     Settings* settings = Settings::instance();
     settings->angleUnit = 'r';
     settings->setRadixCharacter('.');
-    settings->parseAllRadixChar = true;
-    settings->strictDigitGrouping = true;
+    settings->complexNumbers = false;
+    DMath::complexMode = false;
 
     eval = Evaluator::instance();
+
+    eval->initializeBuiltInVariables();
 
     test_constants();
     test_unary();
@@ -672,29 +906,39 @@ int main(int argc, char* argv[])
     test_divide_by_zero();
     test_radix_char();
 
-    settings->strictDigitGrouping = false;
-    test_thoushand_sep();
-    settings->strictDigitGrouping = true;
-    test_thoushand_sep_strict();
+    test_thousand_sep();
 
     test_function_basic();
     test_function_trig();
     test_function_stat();
     test_function_logic();
     test_function_discrete();
+    test_function_simplified();
 
     test_auto_fix_parentheses();
     test_auto_fix_ans();
     test_auto_fix_trailing_equal();
+    test_auto_fix_powers();
     test_auto_fix_untouch();
 
     test_comments();
 
     test_user_functions();
 
-    cerr << eval_total_tests  << " total, " << eval_failed_tests << " failed";
-    if (eval_failed_tests)
-        cerr << ", " << eval_new_failed_tests << " new";
-    cerr << endl;
-    return 0;
+    test_implicit_multiplication();
+
+    settings->complexNumbers = true;
+    DMath::complexMode = true;
+    eval->initializeBuiltInVariables();
+    test_complex();
+    test_format();
+
+    test_angle_mode(settings);
+
+    if (!eval_failed_tests)
+        return 0;
+    cout << eval_total_tests  << " total, "
+         << eval_failed_tests << " failed, "
+         << eval_new_failed_tests << " new" << endl;
+    return eval_new_failed_tests;
 }

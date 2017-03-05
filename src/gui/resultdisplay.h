@@ -1,5 +1,5 @@
 // This file is part of the SpeedCrunch project
-// Copyright (C) 2009, 2011, 2013, 2014 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2009, 2011, 2013, 2014 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -22,8 +22,10 @@
 #include <QBasicTimer>
 #include <QPlainTextEdit>
 
-class HNumber;
+class Quantity;
 class SyntaxHighlighter;
+class HistoryEntry;
+class Session;
 
 class ResultDisplay : public QPlainTextEdit
 {
@@ -32,16 +34,19 @@ class ResultDisplay : public QPlainTextEdit
 public:
     explicit ResultDisplay(QWidget* parent = 0);
 
-    void append(const QString& expr, const HNumber& value);
+    void append(const QString& expr, Quantity& value);
     void appendHistory(const QStringList& expressions, const QStringList& results);
     int count() const;
-    bool isEmpty() const { return m_count == 0; }
+    bool isEmpty() const { return m_count==0; }
+    QString exportHtml() const;
 
 signals:
     void shiftWheelDown();
     void shiftWheelUp();
     void shiftControlWheelDown();
     void shiftControlWheelUp();
+    void controlWheelDown();
+    void controlWheelUp();
     void expressionSelected(const QString&);
 
 public slots:
@@ -63,7 +68,7 @@ protected:
     virtual void wheelEvent(QWheelEvent*);
     virtual void timerEvent(QTimerEvent*);
     void fullContentScrollEvent();
-    float linesPerPage() { return static_cast<float>(viewport()->height()) / fontMetrics().height(); }
+    float linesPerPage() const { return static_cast<float>(viewport()->height()) / fontMetrics().height(); }
     void pageScrollEvent();
     void scrollToDirection(int);
     void stopActiveScrollingAnimation();
@@ -72,14 +77,12 @@ protected:
 private:
     Q_DISABLE_COPY(ResultDisplay)
 
-    int m_count;
-    QStringList m_expressions;
     SyntaxHighlighter* m_highlighter;
-    QStringList m_results;
     QBasicTimer m_scrollTimer;
     int m_scrolledLines;
     int m_scrollDirection;
     bool m_isScrollingPageOnly;
+    int m_count;
 };
 
 #endif

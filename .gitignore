@@ -10,3 +10,13 @@ src/speedcrunch
 src/testevaluator
 src/testfloatnum
 src/testhmath
+src/CMakeLists.txt.user
+src/speedcrunch.pro.user
+Testing
+doc
+moc_*.cpp
+*.log
+*_automoc.cpp
+testcmath
+testdmath
+testser

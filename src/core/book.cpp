@@ -1,5 +1,5 @@
 // This file is part of the SpeedCrunch project
-// Copyright (C) 2013, 2014 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2013, 2014 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -333,11 +333,6 @@ static QString makeRFAntennasPage()
         FORMULA_UNIT(E = sqrt(30 * Pin) / r, E = &radic;(30&sdot;P<sub>in</sub>) / r, V&sdot;m<sup>-1</sup>)
         FORMULA_UNIT(Ed = E * sqrt(D), Ed = E&sdot;&radic;D, V&sdot;m<sup>-1</sup>)
         FORMULA_UNIT(Edp = E * sqrt(1.64), Edp = E&sdot;&radic;1.64, V&sdot;m<sup>-1</sup>)
-        TABLE
-        VARIABLE(T<sub>c</sub>) CAPTION(Book::tr("temperature") + QString::fromUtf8(" (°C)")) ROW
-        VARIABLE(T<sub>f</sub>) CAPTION(Book::tr("temperature") + QString::fromUtf8(" (°F)")) ROW
-        VARIABLE(T<sub>k</sub>) CAPTION(Book::tr("temperature") + " (K)")
-        _TABLE
         END;
 }
 

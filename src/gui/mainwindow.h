@@ -1,7 +1,7 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2004 Ariya Hidayat <ariya@kde.org>
 // Copyright (C) 2005, 2006 Johan Thelin <e8johan@gmail.com>
-// Copyright (C) 2007-2014 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2007-2016 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -21,30 +21,39 @@
 #ifndef GUI_MAINWINDOW_H
 #define GUI_MAINWINDOW_H
 
+#include "gui/keypad.h"
+#include "math/quantity.h"
+
 #include <QMainWindow>
-#include <QSystemTrayIcon>
 
 class AutoHideLabel;
 class BitFieldWidget;
+template <class Widget> class GenericDock;
 class BookDock;
 class Constants;
-class ConstantsDock;
+class ConstantsWidget;
 class Editor;
 class Evaluator;
+class HistoryEntry;
+class UserFunction;
 class FunctionRepo;
-class FunctionsDock;
-class HistoryDock;
+class FunctionsWidget;
+class HistoryWidget;
 class ManualWindow;
+class ManualServer;
 class ResultDisplay;
+class Session;
 class Settings;
-class VariablesDock;
-class UserFunctionsDock;
+class UserFunctionListWidget;
+class Variable;
+class VariableListWidget;
 
 class QActionGroup;
 class QHBoxLayout;
 class QLabel;
 class QPlainTextEdit;
 class QPushButton;
+class QComboBox;
 class QTranslator;
 class QVBoxLayout;
 
@@ -63,48 +72,55 @@ signals:
     void resultFormatChanged();
     void resultPrecisionChanged();
     void syntaxHighlightingChanged();
+    void historyChanged();
+    void variablesChanged();
+    void functionsChanged();
 
 public slots:
     void copy();
 
 private slots:
-    void activate();
     void applySelectedColorScheme();
     void clearEditor();
+    void clearEditorAndBitfield();
     void clearHistory();
     void copyResultToClipboard();
     void cycleAngleUnits();
-    void cycleResultFormats();
     void precisionDecrease();
     void precisionAuto();
     void precisionIncrease();
+    void decreaseDisplayFontPointSize();
     void decreaseOpacity();
     void deleteVariables();
     void deleteUserFunctions();
     void evaluateEditorExpression();
     void exportHtml();
     void exportPlainText();
+    void handleAutoCalcMessageAvailable(const QString&);
+    void handleAutoCalcQuantityAvailable(const Quantity&);
     void handleCopyAvailable(bool copyAvailable);
-    void handleBitsChanged(const QString&str);
+    void handleBitsChanged(const QString&);
+    void handleKeypadButtonPress(Keypad::Button);
     void handleEditorTextChange();
     void handleDisplaySelectionChange();
     void handleEditorSelectionChange();
     void handleManualClosed();
-    void handleSystemTrayIconActivation(QSystemTrayIcon::ActivationReason);
+    void handleDockWidgetVisibilityChanged(bool visible);
     void hideStateLabel();
+    void increaseDisplayFontPointSize();
     void increaseOpacity();
     void insertConstantIntoEditor(const QString&);
     void insertFunctionIntoEditor(const QString&);
     void insertTextIntoEditor(const QString&);
     void insertVariableIntoEditor(const QString&);
     void insertUserFunctionIntoEditor(const QString&);
-    void minimizeToSystemTray();
     void openUpdatesURL();
     void openFeedbackURL();
     void openCommunityURL();
     void openNewsURL();
+    void openDonateURL();
     void retranslateText();
-    void saveSession();
+    void saveSessionDialog();
     void selectEditorExpression();
     void setAlwaysOnTopEnabled(bool);
     void setAngleModeDegree();
@@ -113,18 +129,21 @@ private slots:
     void setAutoCalcEnabled(bool);
     void setAutoCompletionEnabled(bool);
     void setBitfieldVisible(bool);
-    void setConstantsDockVisible(bool);
-    void setFormulaBookDockVisible(bool);
+    void setConstantsDockVisible(bool, bool takeFocus = true);
+    void setFormulaBookDockVisible(bool, bool takeFocus = true);
     void setFullScreenEnabled(bool);
-    void setFunctionsDockVisible(bool);
-    void setHistoryDockVisible(bool);
-    void setHistorySaveEnabled(bool);
+    void setFunctionsDockVisible(bool, bool takeFocus = true);
+    void setHistoryDockVisible(bool, bool takeFocus = true);
+    void setSessionSaveEnabled(bool);
+    void setKeypadVisible(bool);
     void setLeaveLastExpressionEnabled(bool);
     void setRadixCharacterAutomatic();
     void setRadixCharacter(char);
     void setRadixCharacterComma();
     void setRadixCharacterDot();
+    void setRadixCharacterBoth();
     void setResultFormatBinary();
+    void setResultFormatCartesian();
     void setResultFormat(char);
     void setResultFormatEngineering();
     void setResultFormatEngineeringSI();
@@ -132,6 +151,7 @@ private slots:
     void setResultFormatGeneral();
     void setResultFormatHexadecimal();
     void setResultFormatOctal();
+    void setResultFormatPolar();
     void setResultFormatScientific();
     void setResultPrecision15Digits();
     void setResultPrecision2Digits();
@@ -144,13 +164,9 @@ private slots:
     void setSyntaxHighlightingEnabled(bool);
     void setDigitGrouping(QAction*);
     void setAutoResultToClipboardEnabled(bool);
-    void setParseAllRadixChar(bool);
-    void setStrictDigitGrouping(bool);
-    void setSystemTrayIconEnabled(bool);
-    void setVariableSaveEnabled(bool);
-    void setUserFunctionSaveEnabled(bool b);
-    void setVariablesDockVisible(bool);
-    void setUserFunctionsDockVisible(bool);
+    void setComplexNumbers(bool);
+    void setVariablesDockVisible(bool, bool takeFocus = true);
+    void setUserFunctionsDockVisible(bool, bool takeFocus = true);
     void setWindowPositionSaveEnabled(bool);
     void setWidgetsDirection();
     void showAboutDialog();
@@ -158,23 +174,23 @@ private slots:
     void showFontDialog();
     void showLanguageChooserDialog();
     void showManualWindow();
+    void showContextHelp();
     void showReadyMessage();
     void showResultFormatContextMenu(const QPoint&);
     void showSessionImportDialog();
     void showSessionLoadDialog();
-    void showSystemTrayMessage();
-    void increaseDisplayFontPointSize();
-    void decreaseDisplayFontPointSize();
+    void wrapSelection();
 
 protected:
     virtual void closeEvent(QCloseEvent*);
-    virtual bool event(QEvent*);
     virtual bool eventFilter(QObject*, QEvent*);
 
 private:
     Q_DISABLE_COPY(MainWindow)
 
     void clearTextEditSelection(QPlainTextEdit*);
+    void addTabifiedDock(QDockWidget*, bool takeFocus, Qt::DockWidgetArea = Qt::RightDockWidgetArea);
+    void deleteDock(QDockWidget*);
     void createUi();
     void createActions();
     void createActionGroups();
@@ -182,22 +198,23 @@ private:
     void createMenus();
     void createStatusBar();
     void createFixedWidgets();
+    void createKeypad();
     void createBitField();
-    void createBookDock();
-    void createConstantsDock();
-    void createFunctionsDock();
-    void createHistoryDock();
-    void createVariablesDock();
-    void createUserFunctionsDock();
+    void createBookDock(bool takeFocus = true);
+    void createConstantsDock(bool takeFocus = true);
+    void createFunctionsDock(bool takeFocus = true);
+    void createHistoryDock(bool takeFocus = true);
+    void createVariablesDock(bool takeFocus = true);
+    void createUserFunctionsDock(bool takeFocus = true);
     void createFixedConnections();
     void applySettings();
     void checkInitialResultFormat();
+    void checkInitialComplexFormat();
     void checkInitialResultPrecision();
     void checkInitialLanguage();
     void checkInitialDigitGrouping();
-    void restoreHistory();
-    void restoreVariables();
-    void restoreUserFunctions();
+    void restoreSession();
+    void deleteKeypad();
     void deleteStatusBar();
     void deleteBitField();
     void deleteBookDock();
@@ -207,6 +224,7 @@ private:
     void deleteVariablesDock();
     void deleteUserFunctionsDock();
     void saveSettings();
+    void saveSession(QString &fname);
     void setActionsText();
     void setMenusText();
     void setStatusBarText();
@@ -231,6 +249,8 @@ private:
         QAction* editDeleteUserFunction;
         QAction* editClearExpression;
         QAction* editClearHistory;
+        QAction* editWrapSelection;
+        QAction* viewKeypad;
         QAction* viewFormulaBook;
         QAction* viewConstants;
         QAction* viewFunctions;
@@ -246,6 +266,7 @@ private:
         QAction* settingsResultFormatEngineeringSI;
         QAction* settingsResultFormatScientific;
         QAction* settingsResultFormatAutoPrecision;
+        QAction* settingsResultFormat0Digits;
         QAction* settingsResultFormat2Digits;
         QAction* settingsResultFormat3Digits;
         QAction* settingsResultFormat8Digits;
@@ -253,12 +274,12 @@ private:
         QAction* settingsResultFormat50Digits;
         QAction* settingsResultFormatBinary;
         QAction* settingsResultFormatOctal;
+        QAction* settingsResultFormatCartesian;
+        QAction* settingsResultFormatPolar;
         QAction* settingsResultFormatHexadecimal;
         QAction* settingsAngleUnitRadian;
         QAction* settingsAngleUnitDegree;
-        QAction* settingsBehaviorSaveHistoryOnExit;
-        QAction* settingsBehaviorSaveVariablesOnExit;
-        QAction* settingsBehaviorSaveUserFunctionsOnExit;
+        QAction* settingsBehaviorSaveSessionOnExit;
         QAction* settingsBehaviorSaveWindowPositionOnExit;
         QAction* settingsBehaviorPartialResults;
         QAction* settingsBehaviorAutoCompletion;
@@ -270,18 +291,13 @@ private:
         QAction* settingsBehaviorAutoAns;
         QAction* settingsBehaviorLeaveLastExpression;
         QAction* settingsBehaviorAlwaysOnTop;
-        QAction* settingsBehaviorMinimizeToTray;
         QAction* settingsBehaviorAutoResultToClipboard;
-        QAction* settingsBehaviorParseAllRadixChar;
-        QAction* settingsBehaviorStrictDigitGrouping;
+        QAction* settingsRadixCharBoth;
+        QAction* settingsBehaviorComplexNumbers;
         QAction* settingsDisplayZoomIn;
         QAction* settingsDisplayZoomOut;
         QAction* settingsDisplayFont;
-        QAction* settingsDisplayColorSchemeStandard;
-        QAction* settingsDisplayColorSchemeSublime;
-        QAction* settingsDisplayColorSchemeTerminal;
-        QAction* settingsDisplayColorSchemeSolarizedDark;
-        QAction* settingsDisplayColorSchemeSolarizedLight;
+        QVector<QAction*> settingsDisplayColorSchemes;
         QAction* settingsRadixCharDefault;
         QAction* settingsRadixCharDot;
         QAction* settingsRadixCharComma;
@@ -291,7 +307,9 @@ private:
         QAction* helpFeedback;
         QAction* helpCommunity;
         QAction* helpNews;
+        QAction* helpDonate;
         QAction* helpAbout;
+        QAction* contextHelp;
     } m_actions;
 
     struct {
@@ -299,6 +317,7 @@ private:
         QActionGroup* colorScheme;
         QActionGroup* digits;
         QActionGroup* resultFormat;
+        QActionGroup* complexFormat;
         QActionGroup* radixChar;
         QActionGroup* digitGrouping;
     } m_actionGroups;
@@ -312,47 +331,49 @@ private:
         QMenu* display;
         QMenu* edit;
         QMenu* resultFormat;
+        QMenu* inputFormat;
+        QMenu* complexFormat;
         QMenu* help;
         QMenu* precision;
         QMenu* radixChar;
         QMenu* session;
         QMenu* sessionExport;
         QMenu* settings;
-        QMenu* trayIcon;
         QMenu* view;
     } m_menus;
 
     struct {
         QVBoxLayout* root;
+        QHBoxLayout* keypad;
     } m_layouts;
 
     struct {
         QLabel* state;
         ResultDisplay* display;
         Editor* editor;
+        Keypad* keypad = nullptr;
         QWidget* root;
-        QSystemTrayIcon* trayIcon;
-        ManualWindow* manual;
-        BitFieldWidget* bitField;
+        ManualWindow* manual = nullptr;
+        BitFieldWidget* bitField = nullptr;
     } m_widgets;
 
     struct {
         BookDock* book;
-        ConstantsDock* constants;
-        FunctionsDock* functions;
-        HistoryDock* history;
-        VariablesDock* variables;
-        UserFunctionsDock* userFunctions;
+        GenericDock<ConstantsWidget>* constants;
+        GenericDock<FunctionsWidget>* functions;
+        GenericDock<HistoryWidget>* history;
+        GenericDock<VariableListWidget>* variables;
+        GenericDock<UserFunctionListWidget>* userFunctions;
     } m_docks;
+    QList<QDockWidget*> m_allDocks;
 
     struct {
-        bool trayNotify;
         bool autoAns;
     } m_conditions;
 
     struct {
         QPushButton* angleUnit;
-        QPushButton* resultFormat;
+        QComboBox* resultFormat;
         QPushButton* precMin;
         QPushButton* precAuto;
         QPushButton* precPlus;
@@ -362,8 +383,10 @@ private:
     Evaluator* m_evaluator;
     FunctionRepo* m_functions;
     Settings* m_settings;
+    Session* m_session;
     QTranslator* m_translator;
     QPlainTextEdit* m_copyWidget;
+    ManualServer* m_manualServer;
 };
 
 #endif // GUI_MAINWINDOW_H

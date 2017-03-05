@@ -1,7 +1,7 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2004, 2007 Ariya Hidayat <ariya@kde.org>
 // Copyright (C) 2005, 2006 Johan Thelin <e8johan@gmail.com>
-// Copyright (C) 2007-2014 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2007-2016 @heldercorreia
 // Copyright (C) 2011 Daniel Schäufele <git@schaeufele.org>
 //
 // This program is free software; you can redistribute it and/or
@@ -26,19 +26,25 @@
 #include "core/functions.h"
 #include "core/numberformatter.h"
 #include "core/settings.h"
+#include "core/session.h"
+#include "core/variable.h"
+#include "core/sessionhistory.h"
+#include "core/userfunction.h"
 #include "gui/aboutbox.h"
 #include "gui/bitfieldwidget.h"
 #include "gui/bookdock.h"
-#include "gui/constantsdock.h"
+#include "gui/genericdock.h"
+#include "gui/constantswidget.h"
+#include "gui/functionswidget.h"
+#include "gui/historywidget.h"
+#include "gui/userfunctionlistwidget.h"
+#include "gui/variablelistwidget.h"
 #include "gui/editor.h"
-#include "gui/functionsdock.h"
-#include "gui/historydock.h"
 #include "gui/historywidget.h"
 #include "gui/manualwindow.h"
+#include "core/manualserver.h"
 #include "gui/resultdisplay.h"
 #include "gui/syntaxhighlighter.h"
-#include "gui/variablesdock.h"
-#include "gui/userfunctionsdock.h"
 #include "math/floatconfig.h"
 
 #include <QLatin1String>
@@ -62,26 +68,29 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
+#include <QComboBox>
 #include <QScrollBar>
 #include <QStatusBar>
 #include <QToolTip>
 #include <QVBoxLayout>
+#include <QJsonDocument>
 
 #ifdef Q_OS_WIN32
-#include "Windows.h"
+#include "windows.h"
+#include <shlobj.h>
 #endif // Q_OS_WIN32
 
 QTranslator* MainWindow::createTranslator(const QString& langCode)
 {
     QTranslator* translator = new QTranslator;
-    QString locale = (langCode == "C") ? QLocale().name() : langCode;
+    QLocale locale(langCode == "C" ? QLocale().name() : langCode);
 
-    if (locale == "C")
-        locale = "en";
-    else if (locale == "uz" || locale == "uz_UZ")
-        locale = "uz@Latn";
+    if(!translator->load(locale, QString(":/locale/"))) {
+        // Strip the country and try to find a generic translation for this language
+        locale = QLocale(locale.language());
+        translator->load(locale, QString(":/locale/"));
+    }
 
-    translator->load(QString(":/locale/") + locale);
     return translator;
 }
 
@@ -114,10 +123,12 @@ void MainWindow::createActions()
     m_actions.editCopy = new QAction(this);
     m_actions.editPaste = new QAction(this);
     m_actions.editSelectExpression = new QAction(this);
+    m_actions.editWrapSelection = new QAction(this);
     m_actions.viewConstants = new QAction(this);
     m_actions.viewFullScreenMode = new QAction(this);
     m_actions.viewFunctions = new QAction(this);
     m_actions.viewHistory = new QAction(this);
+    m_actions.viewKeypad = new QAction(this);
     m_actions.viewFormulaBook = new QAction(this);
     m_actions.viewStatusBar = new QAction(this);
     m_actions.viewVariables = new QAction(this);
@@ -129,11 +140,8 @@ void MainWindow::createActions()
     m_actions.settingsBehaviorAutoAns = new QAction(this);
     m_actions.settingsBehaviorAutoCompletion = new QAction(this);
     m_actions.settingsBehaviorLeaveLastExpression = new QAction(this);
-    m_actions.settingsBehaviorMinimizeToTray = new QAction(this);
     m_actions.settingsBehaviorPartialResults = new QAction(this);
-    m_actions.settingsBehaviorSaveHistoryOnExit = new QAction(this);
-    m_actions.settingsBehaviorSaveVariablesOnExit = new QAction(this);
-    m_actions.settingsBehaviorSaveUserFunctionsOnExit = new QAction(this);
+    m_actions.settingsBehaviorSaveSessionOnExit = new QAction(this);
     m_actions.settingsBehaviorSaveWindowPositionOnExit = new QAction(this);
     m_actions.settingsBehaviorSyntaxHighlighting = new QAction(this);
     m_actions.settingsBehaviorDigitGroupingNone = new QAction(this);
@@ -141,18 +149,14 @@ void MainWindow::createActions()
     m_actions.settingsBehaviorDigitGroupingTwoSpaces = new QAction(this);
     m_actions.settingsBehaviorDigitGroupingThreeSpaces = new QAction(this);
     m_actions.settingsBehaviorAutoResultToClipboard = new QAction(this);
-    m_actions.settingsBehaviorParseAllRadixChar = new QAction(this);
-    m_actions.settingsBehaviorStrictDigitGrouping = new QAction(this);
-    m_actions.settingsDisplayColorSchemeStandard = new QAction(this);
-    m_actions.settingsDisplayColorSchemeSublime = new QAction(this);
-    m_actions.settingsDisplayColorSchemeTerminal = new QAction(this);
-    m_actions.settingsDisplayColorSchemeSolarizedDark = new QAction(this);
-    m_actions.settingsDisplayColorSchemeSolarizedLight = new QAction(this);
+    m_actions.settingsBehaviorComplexNumbers = new QAction(this);
     m_actions.settingsDisplayFont = new QAction(this);
     m_actions.settingsLanguage = new QAction(this);
     m_actions.settingsRadixCharComma = new QAction(this);
     m_actions.settingsRadixCharDefault = new QAction(this);
     m_actions.settingsRadixCharDot = new QAction(this);
+    m_actions.settingsRadixCharBoth = new QAction(this);
+    m_actions.settingsResultFormat0Digits = new QAction(this);
     m_actions.settingsResultFormat15Digits = new QAction(this);
     m_actions.settingsResultFormat2Digits = new QAction(this);
     m_actions.settingsResultFormat3Digits = new QAction(this);
@@ -167,12 +171,16 @@ void MainWindow::createActions()
     m_actions.settingsResultFormatHexadecimal = new QAction(this);
     m_actions.settingsResultFormatOctal = new QAction(this);
     m_actions.settingsResultFormatScientific = new QAction(this);
+    m_actions.settingsResultFormatCartesian= new QAction(this);
+    m_actions.settingsResultFormatPolar = new QAction(this);
     m_actions.helpManual = new QAction(this);
     m_actions.helpUpdates = new QAction(this);
     m_actions.helpFeedback = new QAction(this);
     m_actions.helpCommunity = new QAction(this);
     m_actions.helpNews = new QAction(this);
+    m_actions.helpDonate = new QAction(this);
     m_actions.helpAbout = new QAction(this);
+    m_actions.contextHelp = new QAction(this);
 
     m_actions.settingsAngleUnitDegree->setCheckable(true);
     m_actions.settingsAngleUnitRadian->setCheckable(true);
@@ -180,11 +188,8 @@ void MainWindow::createActions()
     m_actions.settingsBehaviorAutoAns->setCheckable(true);
     m_actions.settingsBehaviorAutoCompletion->setCheckable(true);
     m_actions.settingsBehaviorLeaveLastExpression->setCheckable(true);
-    m_actions.settingsBehaviorMinimizeToTray->setCheckable(true);
     m_actions.settingsBehaviorPartialResults->setCheckable(true);
-    m_actions.settingsBehaviorSaveHistoryOnExit->setCheckable(true);
-    m_actions.settingsBehaviorSaveVariablesOnExit->setCheckable(true);
-    m_actions.settingsBehaviorSaveUserFunctionsOnExit->setCheckable(true);
+    m_actions.settingsBehaviorSaveSessionOnExit->setCheckable(true);
     m_actions.settingsBehaviorSaveWindowPositionOnExit->setCheckable(true);
     m_actions.settingsBehaviorSyntaxHighlighting->setCheckable(true);
     m_actions.settingsBehaviorDigitGroupingNone->setCheckable(true);
@@ -196,16 +201,12 @@ void MainWindow::createActions()
     m_actions.settingsBehaviorDigitGroupingThreeSpaces->setCheckable(true);
     m_actions.settingsBehaviorDigitGroupingThreeSpaces->setData(3);
     m_actions.settingsBehaviorAutoResultToClipboard->setCheckable(true);
-    m_actions.settingsBehaviorParseAllRadixChar->setCheckable(true);
-    m_actions.settingsBehaviorStrictDigitGrouping->setCheckable(true);
-    m_actions.settingsDisplayColorSchemeStandard->setCheckable(true);
-    m_actions.settingsDisplayColorSchemeSublime->setCheckable(true);
-    m_actions.settingsDisplayColorSchemeTerminal->setCheckable(true);
-    m_actions.settingsDisplayColorSchemeSolarizedDark->setCheckable(true);
-    m_actions.settingsDisplayColorSchemeSolarizedLight->setCheckable(true);
+    m_actions.settingsBehaviorComplexNumbers->setCheckable(true);
     m_actions.settingsRadixCharComma->setCheckable(true);
     m_actions.settingsRadixCharDefault->setCheckable(true);
     m_actions.settingsRadixCharDot->setCheckable(true);
+    m_actions.settingsRadixCharBoth->setCheckable(true);
+    m_actions.settingsResultFormat0Digits->setCheckable(true);
     m_actions.settingsResultFormat15Digits->setCheckable(true);
     m_actions.settingsResultFormat2Digits->setCheckable(true);
     m_actions.settingsResultFormat3Digits->setCheckable(true);
@@ -213,28 +214,34 @@ void MainWindow::createActions()
     m_actions.settingsResultFormat8Digits->setCheckable(true);
     m_actions.settingsResultFormatAutoPrecision->setCheckable(true);
     m_actions.settingsResultFormatBinary->setCheckable(true);
+    m_actions.settingsResultFormatCartesian->setCheckable(true);
     m_actions.settingsResultFormatEngineering->setCheckable(true);
     m_actions.settingsResultFormatEngineeringSI->setCheckable(true);
     m_actions.settingsResultFormatFixed->setCheckable(true);
     m_actions.settingsResultFormatGeneral->setCheckable(true);
     m_actions.settingsResultFormatHexadecimal->setCheckable(true);
     m_actions.settingsResultFormatOctal->setCheckable(true);
+    m_actions.settingsResultFormatPolar->setCheckable(true);
     m_actions.settingsResultFormatScientific->setCheckable(true);
     m_actions.viewConstants->setCheckable(true);
     m_actions.viewFullScreenMode->setCheckable(true);
     m_actions.viewFunctions->setCheckable(true);
     m_actions.viewHistory->setCheckable(true);
+    m_actions.viewKeypad->setCheckable(true);
     m_actions.viewFormulaBook->setCheckable(true);
     m_actions.viewStatusBar->setCheckable(true);
     m_actions.viewVariables->setCheckable(true);
     m_actions.viewBitfield->setCheckable(true);
     m_actions.viewUserFunctions->setCheckable(true);
 
-    m_actions.settingsDisplayColorSchemeStandard->setData(SyntaxHighlighter::Standard);
-    m_actions.settingsDisplayColorSchemeSublime->setData(SyntaxHighlighter::Sublime);
-    m_actions.settingsDisplayColorSchemeTerminal->setData(SyntaxHighlighter::Terminal);
-    m_actions.settingsDisplayColorSchemeSolarizedDark->setData(SyntaxHighlighter::SolarizedDark);
-    m_actions.settingsDisplayColorSchemeSolarizedLight->setData(SyntaxHighlighter::SolarizedLight);
+    const auto schemes = ColorScheme::enumerate(); // TODO: use qAsConst().
+    for (auto& colorScheme : schemes) {
+        auto action = new QAction(this);
+        action->setCheckable(true);
+        action->setText(colorScheme);
+        action->setData(colorScheme);
+        m_actions.settingsDisplayColorSchemes.append(action);
+    }
 }
 
 void MainWindow::retranslateText()
@@ -266,31 +273,16 @@ void MainWindow::setStatusBarText()
         QString angleUnit = (m_settings->angleUnit == 'r') ?
             MainWindow::tr("Radian") : MainWindow::tr("Degree");
 
-        QString format;
-        switch (m_settings->resultFormat) {
-            case 'b': format = MainWindow::tr("Binary"); break;
-            case 'o': format = MainWindow::tr("Octal"); break;
-            case 'h': format = MainWindow::tr("Hexadecimal"); break;
-            case 'f': format = MainWindow::tr("Fixed decimal"); break;
-            case 'n': format = MainWindow::tr("Engineering decimal"); break;
-            case 's': format = MainWindow::tr("Engineering SI decimal"); break;
-            case 'e': format = MainWindow::tr("Scientific decimal"); break;
-            case 'g': format = MainWindow::tr("General decimal"); break;
-            default : break;
-        }
-
         m_status.angleUnit->setText(angleUnit);
-        m_status.resultFormat->setText(format);
-
         m_status.angleUnit->setToolTip(MainWindow::tr("Angle unit"));
         m_status.resultFormat->setToolTip(MainWindow::tr("Result format"));
 
-	m_status.precMin->setText(MainWindow::tr("-"));
-        m_status.precMin->setToolTip(MainWindow::tr("Decrease decimal precision"));
-	m_status.precAuto->setText(MainWindow::tr("Auto"));
-        m_status.precAuto->setToolTip(MainWindow::tr("Automatic decimal precision"));
-	m_status.precPlus->setText(MainWindow::tr("+"));
-        m_status.precPlus->setToolTip(MainWindow::tr("Increase decimal precision"));
+        m_status.precMin->setText(MainWindow::tr("-"));
+            m_status.precMin->setToolTip(MainWindow::tr("Decrease decimal precision"));
+        m_status.precAuto->setText(MainWindow::tr("Auto"));
+            m_status.precAuto->setToolTip(MainWindow::tr("Automatic decimal precision"));
+        m_status.precPlus->setText(MainWindow::tr("+"));
+            m_status.precPlus->setToolTip(MainWindow::tr("Increase decimal precision"));
     }
 }
 
@@ -309,11 +301,13 @@ void MainWindow::setActionsText()
     m_actions.editCopy->setText(MainWindow::tr("&Copy"));
     m_actions.editPaste->setText(MainWindow::tr("&Paste"));
     m_actions.editSelectExpression->setText(MainWindow::tr("&Select Expression"));
+    m_actions.editWrapSelection->setText(MainWindow::tr("&Wrap Selection in Parentheses"));
 
     m_actions.viewConstants->setText(MainWindow::tr("&Constants"));
     m_actions.viewFullScreenMode->setText(MainWindow::tr("F&ull Screen Mode"));
     m_actions.viewFunctions->setText(MainWindow::tr("&Functions"));
     m_actions.viewHistory->setText(MainWindow::tr("&History"));
+    m_actions.viewKeypad->setText(MainWindow::tr("&Keypad"));
     m_actions.viewFormulaBook->setText(MainWindow::tr("Formula &Book"));
     m_actions.viewStatusBar->setText(MainWindow::tr("&Status Bar"));
     m_actions.viewVariables->setText(MainWindow::tr("&Variables"));
@@ -322,14 +316,11 @@ void MainWindow::setActionsText()
 
     m_actions.settingsAngleUnitDegree->setText(MainWindow::tr("&Degree"));
     m_actions.settingsAngleUnitRadian->setText(MainWindow::tr("&Radian"));
-    m_actions.settingsBehaviorAlwaysOnTop->setText(MainWindow::tr("Always On &Top"));
+    m_actions.settingsBehaviorAlwaysOnTop->setText(MainWindow::tr("Always on &Top"));
     m_actions.settingsBehaviorAutoAns->setText(MainWindow::tr("Automatic Result &Reuse"));
     m_actions.settingsBehaviorAutoCompletion->setText(MainWindow::tr("Automatic &Completion"));
-    m_actions.settingsBehaviorMinimizeToTray->setText(MainWindow::tr("&Minimize To System Tray"));
     m_actions.settingsBehaviorPartialResults->setText(MainWindow::tr("&Partial Results"));
-    m_actions.settingsBehaviorSaveHistoryOnExit->setText(MainWindow::tr("Save &History on Exit"));
-    m_actions.settingsBehaviorSaveVariablesOnExit->setText(MainWindow::tr("Save &Variables on Exit"));
-    m_actions.settingsBehaviorSaveUserFunctionsOnExit->setText(MainWindow::tr("Save User &Functions on Exit"));
+    m_actions.settingsBehaviorSaveSessionOnExit->setText(MainWindow::tr("Save &History on Exit"));
     m_actions.settingsBehaviorSaveWindowPositionOnExit->setText(MainWindow::tr("Save &Window Positon on Exit"));
     m_actions.settingsBehaviorSyntaxHighlighting->setText(MainWindow::tr("Syntax &Highlighting"));
     m_actions.settingsBehaviorDigitGroupingNone->setText(MainWindow::tr("Disabled"));
@@ -338,16 +329,17 @@ void MainWindow::setActionsText()
     m_actions.settingsBehaviorDigitGroupingThreeSpaces->setText(MainWindow::tr("Large Space"));
     m_actions.settingsBehaviorLeaveLastExpression->setText(MainWindow::tr("Leave &Last Expression"));
     m_actions.settingsBehaviorAutoResultToClipboard->setText(MainWindow::tr("Automatic &Result to Clipboard"));
-    m_actions.settingsBehaviorParseAllRadixChar->setText(MainWindow::tr("Detect &All Radix Characters"));
-    m_actions.settingsBehaviorStrictDigitGrouping->setText(MainWindow::tr("&Strict Digit Groups Detection"));
+    m_actions.settingsBehaviorComplexNumbers->setText(MainWindow::tr("Enable Complex Numbers"));
     m_actions.settingsRadixCharComma->setText(MainWindow::tr("&Comma"));
     m_actions.settingsRadixCharDefault->setText(MainWindow::tr("&System Default"));
     m_actions.settingsRadixCharDot->setText(MainWindow::tr("&Dot"));
-    m_actions.settingsResultFormat15Digits->setText(MainWindow::tr("&15 Decimal Digits"));
-    m_actions.settingsResultFormat2Digits->setText(MainWindow::tr("&2 Decimal Digits"));
-    m_actions.settingsResultFormat3Digits->setText(MainWindow::tr("&3 Decimal Digits"));
-    m_actions.settingsResultFormat50Digits->setText(MainWindow::tr("&50 Decimal Digits"));
-    m_actions.settingsResultFormat8Digits->setText(MainWindow::tr("&8 Decimal Digits"));
+    m_actions.settingsRadixCharBoth->setText(MainWindow::tr("Dot &And Comma"));
+    m_actions.settingsResultFormat0Digits->setText(MainWindow::tr("&0 Digits"));
+    m_actions.settingsResultFormat15Digits->setText(MainWindow::tr("&15 Digits"));
+    m_actions.settingsResultFormat2Digits->setText(MainWindow::tr("&2 Digits"));
+    m_actions.settingsResultFormat3Digits->setText(MainWindow::tr("&3 Digits"));
+    m_actions.settingsResultFormat50Digits->setText(MainWindow::tr("&50 Digits"));
+    m_actions.settingsResultFormat8Digits->setText(MainWindow::tr("&8 Digits"));
     m_actions.settingsResultFormatAutoPrecision->setText(MainWindow::tr("&Automatic"));
     m_actions.settingsResultFormatBinary->setText(MainWindow::tr("&Binary"));
     m_actions.settingsResultFormatEngineering->setText(MainWindow::tr("&Engineering"));
@@ -357,19 +349,18 @@ void MainWindow::setActionsText()
     m_actions.settingsResultFormatHexadecimal->setText(MainWindow::tr("&Hexadecimal"));
     m_actions.settingsResultFormatOctal->setText(MainWindow::tr("&Octal"));
     m_actions.settingsResultFormatScientific->setText(MainWindow::tr("&Scientific"));
-    m_actions.settingsDisplayColorSchemeStandard->setText(QLatin1String("Standard"));
-    m_actions.settingsDisplayColorSchemeSublime->setText(QLatin1String("Sublime"));
-    m_actions.settingsDisplayColorSchemeTerminal->setText(QLatin1String("Terminal"));
-    m_actions.settingsDisplayColorSchemeSolarizedDark->setText(QLatin1String("Solarized Dark"));
-    m_actions.settingsDisplayColorSchemeSolarizedLight->setText(QLatin1String("Solarized Light"));
+    m_actions.settingsResultFormatCartesian->setText(MainWindow::tr("&Cartesian"));
+    m_actions.settingsResultFormatPolar->setText(MainWindow::tr("&Polar"));
     m_actions.settingsDisplayFont->setText(MainWindow::tr("&Font..."));
     m_actions.settingsLanguage->setText(MainWindow::tr("&Language..."));
 
     m_actions.helpManual->setText(MainWindow::tr("User &Manual"));
+    m_actions.contextHelp->setText(MainWindow::tr("Context Help"));
     m_actions.helpUpdates->setText(MainWindow::tr("Check &Updates"));
     m_actions.helpFeedback->setText(MainWindow::tr("Send &Feedback"));
     m_actions.helpCommunity->setText(MainWindow::tr("Join &Community"));
     m_actions.helpNews->setText(MainWindow::tr("&News Feed"));
+    m_actions.helpDonate->setText(MainWindow::tr("&Donate"));
     m_actions.helpAbout->setText(MainWindow::tr("About &SpeedCrunch"));
 }
 
@@ -385,13 +376,19 @@ void MainWindow::createActionGroups()
     m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatOctal);
     m_actionGroups.resultFormat->addAction(m_actions.settingsResultFormatHexadecimal);
 
+    m_actionGroups.complexFormat = new QActionGroup(this);
+    m_actionGroups.complexFormat->addAction(m_actions.settingsResultFormatCartesian);
+    m_actionGroups.complexFormat->addAction(m_actions.settingsResultFormatPolar);
+
     m_actionGroups.radixChar = new QActionGroup(this);
     m_actionGroups.radixChar->addAction(m_actions.settingsRadixCharDefault);
     m_actionGroups.radixChar->addAction(m_actions.settingsRadixCharDot);
     m_actionGroups.radixChar->addAction(m_actions.settingsRadixCharComma);
+    m_actionGroups.radixChar->addAction(m_actions.settingsRadixCharBoth);
 
     m_actionGroups.digits = new QActionGroup(this);
     m_actionGroups.digits->addAction(m_actions.settingsResultFormatAutoPrecision);
+    m_actionGroups.digits->addAction(m_actions.settingsResultFormat0Digits);
     m_actionGroups.digits->addAction(m_actions.settingsResultFormat2Digits);
     m_actionGroups.digits->addAction(m_actions.settingsResultFormat3Digits);
     m_actionGroups.digits->addAction(m_actions.settingsResultFormat8Digits);
@@ -403,11 +400,9 @@ void MainWindow::createActionGroups()
     m_actionGroups.angle->addAction(m_actions.settingsAngleUnitDegree);
 
     m_actionGroups.colorScheme = new QActionGroup(this);
-    m_actionGroups.colorScheme->addAction(m_actions.settingsDisplayColorSchemeStandard);
-    m_actionGroups.colorScheme->addAction(m_actions.settingsDisplayColorSchemeSublime);
-    m_actionGroups.colorScheme->addAction(m_actions.settingsDisplayColorSchemeTerminal);
-    m_actionGroups.colorScheme->addAction(m_actions.settingsDisplayColorSchemeSolarizedDark);
-    m_actionGroups.colorScheme->addAction(m_actions.settingsDisplayColorSchemeSolarizedLight);
+    const auto schemes = m_actions.settingsDisplayColorSchemes;
+    for (auto& action : schemes)
+        m_actionGroups.colorScheme->addAction(action);
 
     m_actionGroups.digitGrouping = new QActionGroup(this);
     m_actionGroups.digitGrouping->addAction(m_actions.settingsBehaviorDigitGroupingNone);
@@ -427,11 +422,13 @@ void MainWindow::createActionShortcuts()
     m_actions.editCopy->setShortcut(Qt::CTRL + Qt::Key_C);
     m_actions.editPaste->setShortcut(Qt::CTRL + Qt::Key_V);
     m_actions.editSelectExpression->setShortcut(Qt::CTRL + Qt::Key_A);
+    m_actions.editWrapSelection->setShortcut(Qt::CTRL + Qt::Key_P);
     m_actions.viewBitfield->setShortcut(Qt::CTRL + Qt::Key_6);
     m_actions.viewConstants->setShortcut(Qt::CTRL + Qt::Key_2);
     m_actions.viewFullScreenMode->setShortcut(Qt::Key_F11);
     m_actions.viewFunctions->setShortcut(Qt::CTRL + Qt::Key_3);
     m_actions.viewHistory->setShortcut(Qt::CTRL + Qt::Key_7);
+    m_actions.viewKeypad->setShortcut(Qt::CTRL + Qt::Key_K);
     m_actions.viewFormulaBook->setShortcut(Qt::CTRL + Qt::Key_1);
     m_actions.viewStatusBar->setShortcut(Qt::CTRL + Qt::Key_B);
     m_actions.viewVariables->setShortcut(Qt::CTRL + Qt::Key_4);
@@ -439,14 +436,16 @@ void MainWindow::createActionShortcuts()
     m_actions.settingsAngleUnitDegree->setShortcut(Qt::Key_F10);
     m_actions.settingsAngleUnitRadian->setShortcut(Qt::Key_F9);
     m_actions.settingsResultFormatGeneral->setShortcut(Qt::Key_F1);
-    m_actions.settingsResultFormatEngineering->setShortcut(Qt::Key_F2);
-    m_actions.settingsResultFormatEngineeringSI->setShortcut(Qt::Key_F3);
-    m_actions.settingsResultFormatScientific->setShortcut(Qt::Key_F4);
-    m_actions.settingsResultFormatBinary->setShortcut(Qt::Key_F5);
-    m_actions.settingsResultFormatOctal->setShortcut(Qt::Key_F6);
-    m_actions.settingsResultFormatHexadecimal->setShortcut(Qt::Key_F7);
+    m_actions.settingsResultFormatFixed->setShortcut(Qt::Key_F2);
+    m_actions.settingsResultFormatEngineering->setShortcut(Qt::Key_F3);
+    m_actions.settingsResultFormatEngineeringSI->setShortcut(Qt::Key_F4);
+    m_actions.settingsResultFormatScientific->setShortcut(Qt::Key_F5);
+    m_actions.settingsResultFormatBinary->setShortcut(Qt::Key_F6);
+    m_actions.settingsResultFormatOctal->setShortcut(Qt::Key_F7);
+    m_actions.settingsResultFormatHexadecimal->setShortcut(Qt::Key_F8);
     m_actions.settingsRadixCharDot->setShortcut(Qt::CTRL + Qt::Key_Period);
     m_actions.settingsRadixCharComma->setShortcut(Qt::CTRL + Qt::Key_Comma);
+    m_actions.contextHelp->setShortcut(Qt::Key_F1);
 }
 
 void MainWindow::createMenus()
@@ -471,9 +470,12 @@ void MainWindow::createMenus()
     m_menus.edit->addAction(m_actions.editSelectExpression);
     m_menus.edit->addAction(m_actions.editClearExpression);
     m_menus.edit->addAction(m_actions.editClearHistory);
+    m_menus.edit->addAction(m_actions.editWrapSelection);
 
     m_menus.view = new QMenu("", this);
     menuBar()->addMenu(m_menus.view);
+    m_menus.view->addAction(m_actions.viewKeypad);
+    m_menus.view->addSeparator();
     m_menus.view->addAction(m_actions.viewFormulaBook);
     m_menus.view->addAction(m_actions.viewConstants);
     m_menus.view->addAction(m_actions.viewFunctions);
@@ -497,38 +499,40 @@ void MainWindow::createMenus()
     m_menus.decimal->addAction(m_actions.settingsResultFormatEngineering);
     m_menus.decimal->addAction(m_actions.settingsResultFormatEngineeringSI);
     m_menus.decimal->addAction(m_actions.settingsResultFormatScientific);
-    m_menus.decimal->addSeparator();
 
-    m_menus.precision = m_menus.decimal->addMenu("");
+    m_menus.resultFormat->addAction(m_actions.settingsResultFormatBinary);
+    m_menus.resultFormat->addAction(m_actions.settingsResultFormatOctal);
+    m_menus.resultFormat->addAction(m_actions.settingsResultFormatHexadecimal);
+    m_menus.resultFormat->addSeparator();
+
+    m_menus.precision = m_menus.resultFormat->addMenu("");
     m_menus.precision->addAction(m_actions.settingsResultFormatAutoPrecision);
+    m_menus.precision->addAction(m_actions.settingsResultFormat0Digits);
     m_menus.precision->addAction(m_actions.settingsResultFormat2Digits);
     m_menus.precision->addAction(m_actions.settingsResultFormat3Digits);
     m_menus.precision->addAction(m_actions.settingsResultFormat8Digits);
     m_menus.precision->addAction(m_actions.settingsResultFormat15Digits);
     m_menus.precision->addAction(m_actions.settingsResultFormat50Digits);
 
-    m_menus.resultFormat->addSeparator();
+    m_menus.complexFormat = m_menus.resultFormat->addMenu("");
+    m_menus.complexFormat->addAction(m_actions.settingsResultFormatCartesian);
+    m_menus.complexFormat->addAction(m_actions.settingsResultFormatPolar);
 
-    m_menus.resultFormat->addAction(m_actions.settingsResultFormatBinary);
-    m_menus.resultFormat->addAction(m_actions.settingsResultFormatOctal);
-    m_menus.resultFormat->addAction(m_actions.settingsResultFormatHexadecimal);
+    m_menus.inputFormat = m_menus.settings->addMenu("");
 
-    m_menus.resultFormat->addSeparator();
-
-    m_menus.radixChar = m_menus.resultFormat->addMenu("");
+    m_menus.radixChar = m_menus.inputFormat->addMenu("");
     m_menus.radixChar->addAction(m_actions.settingsRadixCharDefault);
     m_menus.radixChar->addSeparator();
     m_menus.radixChar->addAction(m_actions.settingsRadixCharDot);
     m_menus.radixChar->addAction(m_actions.settingsRadixCharComma);
+    m_menus.radixChar->addAction(m_actions.settingsRadixCharBoth);
 
     m_menus.angleUnit = m_menus.settings->addMenu("");
     m_menus.angleUnit->addAction(m_actions.settingsAngleUnitRadian);
     m_menus.angleUnit->addAction(m_actions.settingsAngleUnitDegree);
 
     m_menus.behavior = m_menus.settings->addMenu("");
-    m_menus.behavior->addAction(m_actions.settingsBehaviorSaveHistoryOnExit);
-    m_menus.behavior->addAction(m_actions.settingsBehaviorSaveVariablesOnExit);
-    m_menus.behavior->addAction(m_actions.settingsBehaviorSaveUserFunctionsOnExit);
+    m_menus.behavior->addAction(m_actions.settingsBehaviorSaveSessionOnExit);
     m_menus.behavior->addAction(m_actions.settingsBehaviorSaveWindowPositionOnExit);
     m_menus.behavior->addSeparator();
     m_menus.behavior->addAction(m_actions.settingsBehaviorPartialResults);
@@ -543,20 +547,16 @@ void MainWindow::createMenus()
     m_menus.digitGrouping->addAction(m_actions.settingsBehaviorDigitGroupingThreeSpaces);
 
     m_menus.behavior->addAction(m_actions.settingsBehaviorLeaveLastExpression);
-    m_menus.behavior->addAction(m_actions.settingsBehaviorParseAllRadixChar);
-    m_menus.behavior->addAction(m_actions.settingsBehaviorStrictDigitGrouping);
+    m_menus.behavior->addAction(m_actions.settingsBehaviorComplexNumbers);
     m_menus.behavior->addSeparator();
     m_menus.behavior->addAction(m_actions.settingsBehaviorAlwaysOnTop);
-    m_menus.behavior->addAction(m_actions.settingsBehaviorMinimizeToTray);
     m_menus.behavior->addAction(m_actions.settingsBehaviorAutoResultToClipboard);
 
     m_menus.display = m_menus.settings->addMenu("");
     m_menus.colorScheme = m_menus.display->addMenu("");
-    m_menus.colorScheme->addAction(m_actions.settingsDisplayColorSchemeStandard);
-    m_menus.colorScheme->addAction(m_actions.settingsDisplayColorSchemeSublime);
-    m_menus.colorScheme->addAction(m_actions.settingsDisplayColorSchemeTerminal);
-    m_menus.colorScheme->addAction(m_actions.settingsDisplayColorSchemeSolarizedDark);
-    m_menus.colorScheme->addAction(m_actions.settingsDisplayColorSchemeSolarizedLight);
+    const auto schemes = m_actions.settingsDisplayColorSchemes; // TODO: qAsConst().
+    for (auto& action : schemes)
+        m_menus.colorScheme->addAction(action);
     m_menus.display->addAction(m_actions.settingsDisplayFont);
 
     m_menus.settings->addAction(m_actions.settingsLanguage);
@@ -564,11 +564,13 @@ void MainWindow::createMenus()
     m_menus.help = new QMenu("", this);
     menuBar()->addMenu(m_menus.help);
     m_menus.help->addAction(m_actions.helpManual);
+    m_menus.help->addAction(m_actions.contextHelp);
     m_menus.help->addSeparator();
     m_menus.help->addAction(m_actions.helpUpdates);
     m_menus.help->addAction(m_actions.helpFeedback);
     m_menus.help->addAction(m_actions.helpCommunity);
     m_menus.help->addAction(m_actions.helpNews);
+    m_menus.help->addAction(m_actions.helpDonate);
     m_menus.help->addSeparator();
     m_menus.help->addAction(m_actions.helpAbout);
 
@@ -583,10 +585,12 @@ void MainWindow::setMenusText()
     m_menus.view->setTitle(MainWindow::tr("&View"));
     m_menus.settings->setTitle(MainWindow::tr("Se&ttings"));
     m_menus.resultFormat->setTitle(MainWindow::tr("Result &Format"));
+    m_menus.inputFormat->setTitle(MainWindow::tr("&Input Format"));
     m_menus.radixChar->setTitle(MainWindow::tr("Radix &Character"));
     m_menus.decimal->setTitle(MainWindow::tr("&Decimal"));
     m_menus.precision->setTitle(MainWindow::tr("&Precision"));
     m_menus.angleUnit->setTitle(MainWindow::tr("&Angle Unit"));
+    m_menus.complexFormat->setTitle(MainWindow::tr("Comple&x Format"));
     m_menus.behavior->setTitle(MainWindow::tr("&Behavior"));
     m_menus.display->setTitle(MainWindow::tr("&Display"));
     m_menus.colorScheme->setTitle(MainWindow::tr("Color Scheme"));
@@ -599,19 +603,24 @@ void MainWindow::createStatusBar()
     QStatusBar* bar = statusBar();
 
     m_status.angleUnit = new QPushButton(bar);
-    m_status.resultFormat = new QPushButton(bar);
+    m_status.resultFormat = new QComboBox(bar);
     m_status.precMin = new QPushButton(bar);
     m_status.precAuto = new QPushButton(bar);
     m_status.precPlus = new QPushButton(bar);
 
-    //m_status.angleUnit->setFlat(true);
-    //m_status.resultFormat->setFlat(true);
-    //m_status.precMin->setFlat(true);
-    //m_status.precAuto->setFlat(true);
-    //m_status.precPlus->setFlat(true);
-
     m_status.precMin->setFixedWidth(40);
     m_status.precPlus->setFixedWidth(40);
+
+    m_status.angleUnit->setFocusPolicy(Qt::NoFocus);
+    // m_status.resultFormat->setFocusPolicy(Qt::NoFocus);
+    m_status.resultFormat->addItem(MainWindow::tr("General decimal"));
+    m_status.resultFormat->addItem(MainWindow::tr("Fixed decimal"));
+    m_status.resultFormat->addItem(MainWindow::tr("Engineering decimal"));
+    m_status.resultFormat->addItem(MainWindow::tr("Engineering SI decimal"));
+    m_status.resultFormat->addItem(MainWindow::tr("Scientific decimal"));
+    m_status.resultFormat->addItem(MainWindow::tr("Binary"));
+    m_status.resultFormat->addItem(MainWindow::tr("Octal"));
+    m_status.resultFormat->addItem(MainWindow::tr("Hexadecimal"));
 
     m_status.angleUnit->setContextMenuPolicy(Qt::ActionsContextMenu);
     m_status.angleUnit->addAction(m_actions.settingsAngleUnitRadian);
@@ -621,8 +630,37 @@ void MainWindow::createStatusBar()
     connect(m_status.resultFormat, SIGNAL(customContextMenuRequested(const QPoint&)),
         SLOT(showResultFormatContextMenu(const QPoint&)));
 
+    connect(m_status.resultFormat, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged),[=](int index) {
+        switch(index)
+        {
+            case 0:
+                m_actions.settingsResultFormatGeneral->trigger();
+                break;
+            case 1:
+                m_actions.settingsResultFormatFixed->trigger();
+                break;
+            case 2:
+                m_actions.settingsResultFormatEngineering->trigger();
+                break;
+            case 3:
+                m_actions.settingsResultFormatEngineeringSI->trigger();
+                break;
+            case 4:
+                m_actions.settingsResultFormatScientific->trigger();
+                break;
+            case 5:
+                m_actions.settingsResultFormatBinary->trigger();
+                break;
+            case 6:
+                m_actions.settingsResultFormatOctal->trigger();
+                break;
+            case 7:
+                m_actions.settingsResultFormatHexadecimal->trigger();
+                break;
+        }
+    });
+
     connect(m_status.angleUnit, SIGNAL(clicked()), SLOT(cycleAngleUnits()));
-    connect(m_status.resultFormat, SIGNAL(clicked()), SLOT(cycleResultFormats()));
     connect(m_status.precMin, SIGNAL(clicked()), SLOT(precisionDecrease()));
     connect(m_status.precAuto, SIGNAL(clicked()), SLOT(precisionAuto()));
     connect(m_status.precPlus, SIGNAL(clicked()), SLOT(precisionIncrease()));
@@ -638,10 +676,6 @@ void MainWindow::createStatusBar()
 
 void MainWindow::createFixedWidgets()
 {
-    m_constants = Constants::instance();
-    m_evaluator = Evaluator::instance();
-    m_functions = FunctionRepo::instance();
-
     m_widgets.root = new QWidget(this);
     setCentralWidget(m_widgets.root);
 
@@ -680,181 +714,148 @@ void MainWindow::createBitField() {
     m_settings->bitfieldVisible = true;
 }
 
-void MainWindow::createBookDock()
+void MainWindow::createKeypad()
+{
+    m_widgets.keypad = new Keypad(m_widgets.root);
+    m_widgets.keypad->setFocusPolicy(Qt::NoFocus);
+
+    connect(m_widgets.keypad, SIGNAL(buttonPressed(Keypad::Button)), SLOT(handleKeypadButtonPress(Keypad::Button)));
+    connect(this, SIGNAL(radixCharacterChanged()), m_widgets.keypad, SLOT(handleRadixCharacterChange()));
+
+    m_layouts.keypad = new QHBoxLayout();
+    m_layouts.keypad->addStretch();
+    m_layouts.keypad->addWidget(m_widgets.keypad);
+    m_layouts.keypad->addStretch();
+    m_layouts.root->addLayout(m_layouts.keypad);
+
+    m_widgets.keypad->show();
+    m_settings->keypadVisible = true;
+}
+
+void MainWindow::createBookDock(bool)
 {
     m_docks.book = new BookDock(this);
     m_docks.book->setObjectName("BookDock");
     m_docks.book->installEventFilter(this);
     m_docks.book->setAllowedAreas(Qt::AllDockWidgetAreas);
-    addDockWidget(Qt::RightDockWidgetArea, m_docks.book);
 
-    connect(m_docks.book, SIGNAL(expressionSelected(const QString&)),
-        SLOT(insertTextIntoEditor(const QString&)));
+    connect(m_docks.book,
+            SIGNAL(expressionSelected(const QString&)),
+            SLOT(insertTextIntoEditor(const QString&)));
 
-    if (m_docks.functions)
-        tabifyDockWidget(m_docks.functions, m_docks.book);
-    else if (m_docks.variables)
-        tabifyDockWidget(m_docks.variables, m_docks.book);
-    else if (m_docks.userFunctions)
-        tabifyDockWidget(m_docks.userFunctions, m_docks.book);
-    else if (m_docks.history)
-        tabifyDockWidget(m_docks.history, m_docks.book);
-    else if (m_docks.constants)
-        tabifyDockWidget(m_docks.constants, m_docks.book);
-
-    m_docks.book->show();
-    m_docks.book->raise();
-
+    // No focus for this dock.
+    addTabifiedDock(m_docks.book, false);
     m_settings->formulaBookDockVisible = true;
 }
 
-void MainWindow::createConstantsDock()
+void MainWindow::createConstantsDock(bool takeFocus)
 {
-    m_docks.constants = new ConstantsDock(this);
+    m_docks.constants = new GenericDock<ConstantsWidget>("MainWindow", QT_TR_NOOP("Constants"), this);
     m_docks.constants->setObjectName("ConstantsDock");
     m_docks.constants->installEventFilter(this);
     m_docks.constants->setAllowedAreas(Qt::AllDockWidgetAreas);
-    addDockWidget(Qt::RightDockWidgetArea, m_docks.constants);
 
-    connect(m_docks.constants->widget(), SIGNAL(constantSelected(const QString&)),
-        SLOT(insertConstantIntoEditor(const QString&)));
-    connect(this, SIGNAL(radixCharacterChanged()), m_docks.constants->widget(),
-        SLOT(handleRadixCharacterChange()));
+    connect(m_docks.constants->widget(), &ConstantsWidget::constantSelected,
+            this, &MainWindow::insertConstantIntoEditor);
+    connect(this, &MainWindow::radixCharacterChanged,
+            m_docks.constants->widget(), &ConstantsWidget::handleRadixCharacterChange);
 
-    if (m_docks.functions)
-        tabifyDockWidget(m_docks.functions, m_docks.constants);
-    else if (m_docks.variables)
-        tabifyDockWidget(m_docks.variables, m_docks.constants);
-    else if (m_docks.userFunctions)
-        tabifyDockWidget(m_docks.userFunctions, m_docks.constants);
-    else if (m_docks.history)
-        tabifyDockWidget(m_docks.history, m_docks.constants);
-    else if (m_docks.book)
-        tabifyDockWidget(m_docks.book, m_docks.constants);
-
-    m_docks.constants->show();
-    m_docks.constants->raise();
-
+    addTabifiedDock(m_docks.constants, takeFocus);
     m_settings->constantsDockVisible = true;
 }
 
-void MainWindow::createFunctionsDock()
+void MainWindow::createFunctionsDock(bool takeFocus)
 {
-    m_docks.functions = new FunctionsDock(this);
+    m_docks.functions = new GenericDock<FunctionsWidget>("MainWindow", QT_TR_NOOP("Functions"), this);
     m_docks.functions->setObjectName("FunctionsDock");
     m_docks.functions->installEventFilter(this);
     m_docks.functions->setAllowedAreas(Qt::AllDockWidgetAreas);
-    addDockWidget(Qt::RightDockWidgetArea, m_docks.functions);
 
-    connect(m_docks.functions->widget(), SIGNAL(functionSelected(const QString&)), SLOT(insertFunctionIntoEditor(const QString&)));
+    connect(m_docks.functions->widget(), &FunctionsWidget::functionSelected,
+            this, &MainWindow::insertFunctionIntoEditor);
 
-    if (m_docks.history)
-        tabifyDockWidget(m_docks.history, m_docks.functions);
-    else if (m_docks.variables)
-        tabifyDockWidget(m_docks.variables, m_docks.functions);
-    else if (m_docks.userFunctions)
-        tabifyDockWidget(m_docks.userFunctions, m_docks.functions);
-    else if (m_docks.constants)
-        tabifyDockWidget(m_docks.constants, m_docks.functions);
-    else if (m_docks.book)
-        tabifyDockWidget(m_docks.book, m_docks.functions);
-
-    m_docks.functions->show();
-    m_docks.functions->raise();
-
+    addTabifiedDock(m_docks.functions, takeFocus);
     m_settings->functionsDockVisible = true;
 }
 
-void MainWindow::createHistoryDock()
+void MainWindow::createHistoryDock(bool)
 {
-    m_docks.history = new HistoryDock(this);
+    m_docks.history = new GenericDock<HistoryWidget>("MainWindow", QT_TR_NOOP("History"), this);
     m_docks.history->setObjectName("HistoryDock");
     m_docks.history->installEventFilter(this);
     m_docks.history->setAllowedAreas(Qt::AllDockWidgetAreas);
-    addDockWidget(Qt::RightDockWidgetArea, m_docks.history);
 
-    HistoryWidget* history = qobject_cast<HistoryWidget*>(m_docks.history->widget());
-    connect(history, SIGNAL(expressionSelected(const QString&)), SLOT(insertTextIntoEditor(const QString&)));
+    connect(m_docks.history->widget(), &HistoryWidget::expressionSelected,
+            this, &MainWindow::insertTextIntoEditor);
+    connect(this, &MainWindow::historyChanged,
+            m_docks.history->widget(), &HistoryWidget::updateHistory);
 
-    HistoryWidget* historyWidget = qobject_cast<HistoryWidget *>(m_docks.history->widget());
-    historyWidget->setHistory(m_widgets.editor->history());
-
-    if (m_docks.functions)
-        tabifyDockWidget(m_docks.functions, m_docks.history);
-    else if (m_docks.variables)
-        tabifyDockWidget(m_docks.variables, m_docks.history);
-    else if (m_docks.userFunctions)
-        tabifyDockWidget(m_docks.userFunctions, m_docks.history);
-    else if (m_docks.constants)
-        tabifyDockWidget(m_docks.constants, m_docks.history);
-    else if (m_docks.book)
-        tabifyDockWidget(m_docks.book, m_docks.history);
-
-    m_docks.history->show();
-    m_docks.history->raise();
-
+    // No focus for this dock.
+    addTabifiedDock(m_docks.history, false);
     m_settings->historyDockVisible = true;
 }
 
-void MainWindow::createVariablesDock()
+void MainWindow::createVariablesDock(bool takeFocus)
 {
-    m_docks.variables = new VariablesDock(this);
+    m_docks.variables = new GenericDock<VariableListWidget>("MainWindow", QT_TR_NOOP("Variables"), this);
     m_docks.variables->setObjectName("VariablesDock");
     m_docks.variables->installEventFilter(this);
     m_docks.variables->setAllowedAreas(Qt::AllDockWidgetAreas);
-    addDockWidget(Qt::RightDockWidgetArea, m_docks.variables);
 
-    connect(m_docks.variables, SIGNAL(variableSelected(const QString&)), SLOT(insertVariableIntoEditor(const QString&)));
-    connect(this, SIGNAL(radixCharacterChanged()), m_docks.variables, SLOT(handleRadixCharacterChange()));
+    connect(m_docks.variables->widget(), &VariableListWidget::variableSelected,
+            this, &MainWindow::insertVariableIntoEditor);
+    connect(this, &MainWindow::radixCharacterChanged,
+            m_docks.variables->widget(), &VariableListWidget::updateList);
+    connect(this, &MainWindow::variablesChanged,
+            m_docks.variables->widget(), &VariableListWidget::updateList);
 
-    m_docks.variables->updateList();
-
-    if (m_docks.functions)
-        tabifyDockWidget(m_docks.functions, m_docks.variables);
-    else if (m_docks.userFunctions)
-        tabifyDockWidget(m_docks.userFunctions, m_docks.variables);
-    else if (m_docks.history)
-        tabifyDockWidget(m_docks.history, m_docks.variables);
-    else if (m_docks.constants)
-        tabifyDockWidget(m_docks.constants, m_docks.variables);
-    else if (m_docks.book)
-        tabifyDockWidget(m_docks.book, m_docks.variables);
-
-    m_docks.variables->show();
-    m_docks.variables->raise();
-
+    addTabifiedDock(m_docks.variables, takeFocus);
     m_settings->variablesDockVisible = true;
 }
 
-void MainWindow::createUserFunctionsDock()
+void MainWindow::createUserFunctionsDock(bool takeFocus)
 {
-    m_docks.userFunctions = new UserFunctionsDock(this);
+    m_docks.userFunctions = new GenericDock<UserFunctionListWidget>("MainWindow", QT_TR_NOOP("User Functions"), this);
     m_docks.userFunctions->setObjectName("UserFunctionsDock");
     m_docks.userFunctions->installEventFilter(this);
     m_docks.userFunctions->setAllowedAreas(Qt::AllDockWidgetAreas);
-    addDockWidget(Qt::RightDockWidgetArea, m_docks.userFunctions);
 
-    connect(m_docks.userFunctions, SIGNAL(userFunctionSelected(const QString&)), SLOT(insertUserFunctionIntoEditor(const QString&)));
-    connect(m_docks.userFunctions, SIGNAL(userFunctionEdited(const QString&)), SLOT(insertUserFunctionIntoEditor(const QString&)));
-    connect(this, SIGNAL(radixCharacterChanged()), m_docks.userFunctions, SLOT(handleRadixCharacterChange()));
+    connect(m_docks.userFunctions->widget(), &UserFunctionListWidget::userFunctionSelected,
+            this, &MainWindow::insertUserFunctionIntoEditor);
+    connect(m_docks.userFunctions->widget(), &UserFunctionListWidget::userFunctionEdited,
+            this, &MainWindow::insertUserFunctionIntoEditor);
+    connect(this, &MainWindow::radixCharacterChanged,
+            m_docks.userFunctions->widget(), &UserFunctionListWidget::updateList);
+    connect(this, &MainWindow::functionsChanged,
+            m_docks.userFunctions->widget(), &UserFunctionListWidget::updateList);
 
-    m_docks.userFunctions->updateList();
-
-    if (m_docks.functions)
-        tabifyDockWidget(m_docks.functions, m_docks.userFunctions);
-    else if (m_docks.variables)
-        tabifyDockWidget(m_docks.variables, m_docks.userFunctions);
-    else if (m_docks.history)
-        tabifyDockWidget(m_docks.history, m_docks.userFunctions);
-    else if (m_docks.constants)
-        tabifyDockWidget(m_docks.constants, m_docks.userFunctions);
-    else if (m_docks.book)
-        tabifyDockWidget(m_docks.book, m_docks.userFunctions);
-
-    m_docks.userFunctions->show();
-    m_docks.userFunctions->raise();
-
+    addTabifiedDock(m_docks.userFunctions, takeFocus);
     m_settings->userFunctionsDockVisible = true;
+}
+
+void MainWindow::addTabifiedDock(QDockWidget* newDock, bool takeFocus, Qt::DockWidgetArea area)
+{
+    connect(newDock, &QDockWidget::visibilityChanged, this, &MainWindow::handleDockWidgetVisibilityChanged);
+    addDockWidget(area, newDock);
+    // Try to find an existing dock we can tabify with.
+    const auto allDocks = m_allDocks; // TODO: Use Qt 5.7's qAsConst().
+    for (auto& d : allDocks) {
+        if (dockWidgetArea(d) == area)
+            tabifyDockWidget(d, newDock);
+    }
+    m_allDocks.append(newDock);
+    newDock->show();
+    newDock->raise();
+    if (takeFocus)
+        newDock->setFocus();
+}
+
+void MainWindow::deleteDock(QDockWidget* dock)
+{
+    removeDockWidget(dock);
+    m_allDocks.removeAll(dock);
+    disconnect(dock);
+    dock->deleteLater();
 }
 
 void MainWindow::createFixedConnections()
@@ -864,48 +865,49 @@ void MainWindow::createFixedConnections()
     connect(m_actions.sessionImport, SIGNAL(triggered()), SLOT(showSessionImportDialog()));
     connect(m_actions.sessionLoad, SIGNAL(triggered()), SLOT(showSessionLoadDialog()));
     connect(m_actions.sessionQuit, SIGNAL(triggered()), SLOT(close()));
-    connect(m_actions.sessionSave, SIGNAL(triggered()), SLOT(saveSession()));
+    connect(m_actions.sessionSave, SIGNAL(triggered()), SLOT(saveSessionDialog()));
 
-    connect(m_actions.editClearExpression, SIGNAL(triggered()), SLOT(clearEditor()));
+    connect(m_actions.editClearExpression, SIGNAL(triggered()), SLOT(clearEditorAndBitfield()));
     connect(m_actions.editClearHistory, SIGNAL(triggered()), SLOT(clearHistory()));
     connect(m_actions.editCopyLastResult, SIGNAL(triggered()), SLOT(copyResultToClipboard()));
     connect(m_actions.editCopy, SIGNAL(triggered()), SLOT(copy()));
     connect(m_actions.editPaste, SIGNAL(triggered()), m_widgets.editor, SLOT(paste()));
     connect(m_actions.editSelectExpression, SIGNAL(triggered()), SLOT(selectEditorExpression()));
+    connect(m_actions.editWrapSelection, SIGNAL(triggered()), SLOT(wrapSelection()));
 
-    connect(m_actions.viewConstants, SIGNAL(toggled(bool)), SLOT(setConstantsDockVisible(bool)));
     connect(m_actions.viewFullScreenMode, SIGNAL(toggled(bool)), SLOT(setFullScreenEnabled(bool)));
-    connect(m_actions.viewFunctions, SIGNAL(toggled(bool)), SLOT(setFunctionsDockVisible(bool)));
-    connect(m_actions.viewHistory, SIGNAL(toggled(bool)), SLOT(setHistoryDockVisible(bool)));
-    connect(m_actions.viewFormulaBook, SIGNAL(toggled(bool)), SLOT(setFormulaBookDockVisible(bool)));
+    connect(m_actions.viewKeypad, SIGNAL(toggled(bool)), SLOT(setKeypadVisible(bool)));
     connect(m_actions.viewStatusBar, SIGNAL(toggled(bool)), SLOT(setStatusBarVisible(bool)));
-    connect(m_actions.viewVariables, SIGNAL(toggled(bool)), SLOT(setVariablesDockVisible(bool)));
     connect(m_actions.viewBitfield, SIGNAL(toggled(bool)), SLOT(setBitfieldVisible(bool)));
-    connect(m_actions.viewUserFunctions, SIGNAL(toggled(bool)), SLOT(setUserFunctionsDockVisible(bool)));
+
+    connect(m_actions.viewConstants, SIGNAL(triggered(bool)), SLOT(setConstantsDockVisible(bool)));
+    connect(m_actions.viewFunctions, SIGNAL(triggered(bool)), SLOT(setFunctionsDockVisible(bool)));
+    connect(m_actions.viewHistory, SIGNAL(triggered(bool)), SLOT(setHistoryDockVisible(bool)));
+    connect(m_actions.viewFormulaBook, SIGNAL(triggered(bool)), SLOT(setFormulaBookDockVisible(bool)));
+    connect(m_actions.viewVariables, SIGNAL(triggered(bool)), SLOT(setVariablesDockVisible(bool)));
+    connect(m_actions.viewUserFunctions, SIGNAL(triggered(bool)), SLOT(setUserFunctionsDockVisible(bool)));
 
     connect(m_actions.settingsAngleUnitDegree, SIGNAL(triggered()), SLOT(setAngleModeDegree()));
     connect(m_actions.settingsAngleUnitRadian, SIGNAL(triggered()), SLOT(setAngleModeRadian()));
 
     connect(m_actions.settingsBehaviorAlwaysOnTop, SIGNAL(toggled(bool)), SLOT(setAlwaysOnTopEnabled(bool)));
     connect(m_actions.settingsBehaviorAutoCompletion, SIGNAL(toggled(bool)), SLOT(setAutoCompletionEnabled(bool)));
-    connect(m_actions.settingsBehaviorMinimizeToTray, SIGNAL(toggled(bool)), SLOT(setSystemTrayIconEnabled(bool)));
     connect(m_actions.settingsBehaviorAutoAns, SIGNAL(toggled(bool)), SLOT(setAutoAnsEnabled(bool)));
     connect(m_actions.settingsBehaviorPartialResults, SIGNAL(toggled(bool)), SLOT(setAutoCalcEnabled(bool)));
-    connect(m_actions.settingsBehaviorSaveHistoryOnExit, SIGNAL(toggled(bool)), SLOT(setHistorySaveEnabled(bool)));
-    connect(m_actions.settingsBehaviorSaveVariablesOnExit, SIGNAL(toggled(bool)), SLOT(setVariableSaveEnabled(bool)));
-    connect(m_actions.settingsBehaviorSaveUserFunctionsOnExit, SIGNAL(toggled(bool)), SLOT(setUserFunctionSaveEnabled(bool)));
+    connect(m_actions.settingsBehaviorSaveSessionOnExit, SIGNAL(toggled(bool)), SLOT(setSessionSaveEnabled(bool)));
     connect(m_actions.settingsBehaviorSaveWindowPositionOnExit, SIGNAL(toggled(bool)), SLOT(setWindowPositionSaveEnabled(bool)));
     connect(m_actions.settingsBehaviorSyntaxHighlighting, SIGNAL(toggled(bool)), SLOT(setSyntaxHighlightingEnabled(bool)));
     connect(m_actionGroups.digitGrouping, SIGNAL(triggered(QAction*)), SLOT(setDigitGrouping(QAction*)));
     connect(m_actions.settingsBehaviorLeaveLastExpression, SIGNAL(toggled(bool)), SLOT(setLeaveLastExpressionEnabled(bool)));
     connect(m_actions.settingsBehaviorAutoResultToClipboard, SIGNAL(toggled(bool)), SLOT(setAutoResultToClipboardEnabled(bool)));
-    connect(m_actions.settingsBehaviorParseAllRadixChar, SIGNAL(toggled(bool)), SLOT(setParseAllRadixChar(bool)));
-    connect(m_actions.settingsBehaviorStrictDigitGrouping, SIGNAL(toggled(bool)), SLOT(setStrictDigitGrouping(bool)));
+    connect(m_actions.settingsBehaviorComplexNumbers, SIGNAL(toggled(bool)), SLOT(setComplexNumbers(bool)));
 
     connect(m_actions.settingsRadixCharComma, SIGNAL(triggered()), SLOT(setRadixCharacterComma()));
     connect(m_actions.settingsRadixCharDefault, SIGNAL(triggered()), SLOT(setRadixCharacterAutomatic()));
     connect(m_actions.settingsRadixCharDot, SIGNAL(triggered()), SLOT(setRadixCharacterDot()));
+    connect(m_actions.settingsRadixCharBoth, SIGNAL(triggered()), SLOT(setRadixCharacterBoth()));
 
+    connect(m_actions.settingsResultFormat0Digits, &QAction::triggered, [this]() { this->setResultPrecision(0); });
     connect(m_actions.settingsResultFormat15Digits, SIGNAL(triggered()), SLOT(setResultPrecision15Digits()));
     connect(m_actions.settingsResultFormat2Digits, SIGNAL(triggered()), SLOT(setResultPrecision2Digits()));
     connect(m_actions.settingsResultFormat3Digits, SIGNAL(triggered()), SLOT(setResultPrecision3Digits()));
@@ -913,25 +915,30 @@ void MainWindow::createFixedConnections()
     connect(m_actions.settingsResultFormat8Digits, SIGNAL(triggered()), SLOT(setResultPrecision8Digits()));
     connect(m_actions.settingsResultFormatAutoPrecision, SIGNAL(triggered()), SLOT(setResultPrecisionAutomatic()));
     connect(m_actions.settingsResultFormatBinary, SIGNAL(triggered()), SLOT(setResultFormatBinary()));
+    connect(m_actions.settingsResultFormatCartesian, SIGNAL(triggered()), SLOT(setResultFormatCartesian()));
     connect(m_actions.settingsResultFormatEngineering, SIGNAL(triggered()), SLOT(setResultFormatEngineering()));
     connect(m_actions.settingsResultFormatEngineeringSI, SIGNAL(triggered()), SLOT(setResultFormatEngineeringSI()));
     connect(m_actions.settingsResultFormatFixed, SIGNAL(triggered()), SLOT(setResultFormatFixed()));
     connect(m_actions.settingsResultFormatGeneral, SIGNAL(triggered()), SLOT(setResultFormatGeneral()));
     connect(m_actions.settingsResultFormatHexadecimal, SIGNAL(triggered()), SLOT(setResultFormatHexadecimal()));
     connect(m_actions.settingsResultFormatOctal, SIGNAL(triggered()), SLOT(setResultFormatOctal()));
+    connect(m_actions.settingsResultFormatPolar, SIGNAL(triggered()), SLOT(setResultFormatPolar()));
     connect(m_actions.settingsResultFormatScientific, SIGNAL(triggered()), SLOT(setResultFormatScientific()));
 
     connect(m_actions.settingsLanguage, SIGNAL(triggered()), SLOT(showLanguageChooserDialog()));
 
     connect(m_actions.helpManual, SIGNAL(triggered()), SLOT(showManualWindow()));
+    connect(m_actions.contextHelp, SIGNAL(triggered()), SLOT(showContextHelp()));
     connect(m_actions.helpUpdates, SIGNAL(triggered()), SLOT(openUpdatesURL()));
     connect(m_actions.helpFeedback, SIGNAL(triggered()), SLOT(openFeedbackURL()));
     connect(m_actions.helpCommunity, SIGNAL(triggered()), SLOT(openCommunityURL()));
     connect(m_actions.helpNews, SIGNAL(triggered()), SLOT(openNewsURL()));
+    connect(m_actions.helpDonate, SIGNAL(triggered()), SLOT(openDonateURL()));
     connect(m_actions.helpAbout, SIGNAL(triggered()), SLOT(showAboutDialog()));
 
     connect(m_widgets.editor, SIGNAL(autoCalcDisabled()), SLOT(hideStateLabel()));
-    connect(m_widgets.editor, SIGNAL(autoCalcEnabled(const QString&)), SLOT(showStateLabel(const QString&)));
+    connect(m_widgets.editor, SIGNAL(autoCalcMessageAvailable(const QString&)), SLOT(handleAutoCalcMessageAvailable(const QString&)));
+    connect(m_widgets.editor, SIGNAL(autoCalcQuantityAvailable(const Quantity&)), SLOT(handleAutoCalcQuantityAvailable(const Quantity&)));
     connect(m_widgets.editor, SIGNAL(returnPressed()), SLOT(evaluateEditorExpression()));
     connect(m_widgets.editor, SIGNAL(shiftDownPressed()), SLOT(decreaseDisplayFontPointSize()));
     connect(m_widgets.editor, SIGNAL(shiftUpPressed()), SLOT(increaseDisplayFontPointSize()));
@@ -945,14 +952,18 @@ void MainWindow::createFixedConnections()
     connect(m_widgets.editor, SIGNAL(copyAvailable(bool)), SLOT(handleCopyAvailable(bool)));
     connect(m_widgets.editor, SIGNAL(copySequencePressed()), SLOT(copy()));
     connect(m_widgets.editor, SIGNAL(selectionChanged()), SLOT(handleEditorSelectionChange()));
+    connect(this, SIGNAL(historyChanged()), m_widgets.editor, SLOT(updateHistory()));
 
     connect(m_widgets.display, SIGNAL(copyAvailable(bool)), SLOT(handleCopyAvailable(bool)));
     connect(m_widgets.display, SIGNAL(expressionSelected(const QString&)), SLOT(insertTextIntoEditor(const QString&)));
     connect(m_widgets.display, SIGNAL(selectionChanged()), SLOT(handleDisplaySelectionChange()));
     connect(m_widgets.display, SIGNAL(shiftWheelUp()), SLOT(increaseDisplayFontPointSize()));
     connect(m_widgets.display, SIGNAL(shiftWheelDown()), SLOT(decreaseDisplayFontPointSize()));
+    connect(m_widgets.display, SIGNAL(controlWheelUp()), SLOT(increaseDisplayFontPointSize()));
+    connect(m_widgets.display, SIGNAL(controlWheelDown()), SLOT(decreaseDisplayFontPointSize()));
     connect(m_widgets.display, SIGNAL(shiftControlWheelDown()), SLOT(decreaseOpacity()));
     connect(m_widgets.display, SIGNAL(shiftControlWheelUp()), SLOT(increaseOpacity()));
+    connect(this, SIGNAL(historyChanged()), m_widgets.display, SLOT(refresh()));
 
     connect(this, SIGNAL(radixCharacterChanged()), m_widgets.display, SLOT(refresh()));
     connect(this, SIGNAL(resultFormatChanged()), m_widgets.display, SLOT(refresh()));
@@ -964,9 +975,9 @@ void MainWindow::createFixedConnections()
 
     connect(m_actions.settingsDisplayFont, SIGNAL(triggered()), SLOT(showFontDialog()));
 
-    QList<QAction*> colorSchemeActions = m_actionGroups.colorScheme->actions();
-    for (int i = 0; i < colorSchemeActions.size(); ++i)
-        connect(colorSchemeActions.at(i), SIGNAL(triggered()), SLOT(applySelectedColorScheme()));
+    const auto schemes = m_actions.settingsDisplayColorSchemes;
+    for (auto& action : schemes) // TODO: Use Qt 5.7's qAsConst();
+        connect(action, SIGNAL(triggered()), SLOT(applySelectedColorScheme()));
 
     connect(this, SIGNAL(languageChanged()), SLOT(retranslateText()));
 }
@@ -975,25 +986,36 @@ void MainWindow::applySettings()
 {
     emit languageChanged();
 
+    setFormulaBookDockVisible(m_settings->formulaBookDockVisible, false);
     m_actions.viewFormulaBook->setChecked(m_settings->formulaBookDockVisible);
+
+    setConstantsDockVisible(m_settings->constantsDockVisible, false);
     m_actions.viewConstants->setChecked(m_settings->constantsDockVisible);
+
+    setFunctionsDockVisible(m_settings->functionsDockVisible, false);
     m_actions.viewFunctions->setChecked(m_settings->functionsDockVisible);
+
+    setHistoryDockVisible(m_settings->historyDockVisible, false);
     m_actions.viewHistory->setChecked(m_settings->historyDockVisible);
+
+    setVariablesDockVisible(m_settings->variablesDockVisible, false);
     m_actions.viewVariables->setChecked(m_settings->variablesDockVisible);
-    m_actions.viewBitfield->setChecked(m_settings->bitfieldVisible);
+
+    setUserFunctionsDockVisible(m_settings->userFunctionsDockVisible, false);
     m_actions.viewUserFunctions->setChecked(m_settings->userFunctionsDockVisible);
 
-    resize(m_settings->windowSize);
+    m_actions.viewBitfield->setChecked(m_settings->bitfieldVisible);
+    m_actions.viewKeypad->setChecked(m_settings->keypadVisible);
+    m_actions.viewStatusBar->setChecked(m_settings->statusBarVisible);
 
-    if (m_settings->maximized)
-        showMaximized();
-    else if (m_settings->windowPosition.isNull()) {
+    if (!restoreGeometry(m_settings->windowGeometry)) {
+        // We couldn't restore the saved geometry; that means it was either empty
+        // or just isn't valid anymore so we use default size and position.
+        resize(640, 480);
         QDesktopWidget* desktop = QApplication::desktop();
         QRect screen = desktop->availableGeometry(this);
         move(screen.center() - rect().center());
-    } else
-        move(m_settings->windowPosition);
-
+    }
     restoreState(m_settings->windowState);
 
     m_actions.viewFullScreenMode->setChecked(m_settings->windowOnfullScreen);
@@ -1004,29 +1026,23 @@ void MainWindow::applySettings()
     else if (m_settings->angleUnit == 'd')
         m_actions.settingsAngleUnitDegree->setChecked(true);
 
-    if (m_settings->historySave) {
-        m_actions.settingsBehaviorSaveHistoryOnExit->setChecked(true);
-        restoreHistory();
+    if (m_settings->sessionSave) {
+        m_actions.settingsBehaviorSaveSessionOnExit->setChecked(true);
+        restoreSession();
     }
 
     m_actions.settingsBehaviorLeaveLastExpression->setChecked(m_settings->leaveLastExpression);
     m_actions.settingsBehaviorSaveWindowPositionOnExit->setChecked(m_settings->windowPositionSave);
 
-    if (m_settings->variableSave) {
-        m_actions.settingsBehaviorSaveVariablesOnExit->setChecked(true);
-        restoreVariables();
-    }
-
-    if (m_settings->userFunctionSave) {
-        m_actions.settingsBehaviorSaveUserFunctionsOnExit->setChecked(true);
-        restoreUserFunctions();
-    }
 
     checkInitialResultFormat();
     checkInitialResultPrecision();
+    checkInitialComplexFormat();
 
     if (m_settings->isRadixCharacterAuto())
         m_actions.settingsRadixCharDefault->setChecked(true);
+    else if (m_settings->isRadixCharacterBoth())
+        m_actions.settingsRadixCharBoth->setChecked(true);
     else if (m_settings->radixCharacter() == '.')
         m_actions.settingsRadixCharDot->setChecked(true);
     else if (m_settings->radixCharacter() == ',')
@@ -1047,8 +1063,6 @@ void MainWindow::applySettings()
     else
         setAutoCompletionEnabled(false);
 
-    m_actions.settingsBehaviorMinimizeToTray->setChecked(m_settings->systemTrayIconVisible);
-
     checkInitialDigitGrouping();
 
     if (m_settings->syntaxHighlighting)
@@ -1061,31 +1075,23 @@ void MainWindow::applySettings()
     else
         setAutoResultToClipboardEnabled(false);
 
-    m_actions.settingsBehaviorParseAllRadixChar->setChecked(m_settings->parseAllRadixChar);
-    m_actions.settingsBehaviorStrictDigitGrouping->setChecked(m_settings->strictDigitGrouping);
+    m_actions.settingsBehaviorComplexNumbers->setChecked(m_settings->complexNumbers);
 
     QFont font;
     font.fromString(m_settings->displayFont);
     m_widgets.display->setFont(font);
     m_widgets.editor->setFont(font);
 
-    if (m_settings->colorScheme == SyntaxHighlighter::Standard)
-        m_actions.settingsDisplayColorSchemeStandard->setChecked(true);
-    else if (m_settings->colorScheme == SyntaxHighlighter::Sublime)
-        m_actions.settingsDisplayColorSchemeSublime->setChecked(true);
-    else if (m_settings->colorScheme == SyntaxHighlighter::Terminal)
-        m_actions.settingsDisplayColorSchemeTerminal->setChecked(true);
-    else if (m_settings->colorScheme == SyntaxHighlighter::SolarizedDark)
-        m_actions.settingsDisplayColorSchemeSolarizedDark->setChecked(true);
-    else if (m_settings->colorScheme == SyntaxHighlighter::SolarizedLight)
-        m_actions.settingsDisplayColorSchemeSolarizedLight->setChecked(true);
+    m_widgets.display->scrollToBottom();
 
-    m_actions.viewStatusBar->setChecked(m_settings->statusBarVisible);
+    const auto schemes = m_actions.settingsDisplayColorSchemes;
+    for (auto& action : schemes) {
+        if (m_settings->colorScheme == action->data().toString())
+            action->setChecked(true);
+    }
 
     if (m_widgets.display->isEmpty())
         QTimer::singleShot(0, this, SLOT(showReadyMessage()));
-
-    QTimer::singleShot(100, m_widgets.editor, SLOT(setFocus()));
 }
 
 void MainWindow::showManualWindow()
@@ -1097,8 +1103,25 @@ void MainWindow::showManualWindow()
     }
 
     m_widgets.manual = new ManualWindow();
+    if (!m_widgets.manual->restoreGeometry(m_settings->manualWindowGeometry))
+        m_widgets.manual->resize(640, 480);
     m_widgets.manual->show();
     connect(m_widgets.manual, SIGNAL(windowClosed()), SLOT(handleManualClosed()));
+}
+
+void MainWindow::showContextHelp()
+{
+    QString kw = "";
+    if(m_widgets.editor->hasFocus()) {
+        kw = m_widgets.editor->getKeyword();
+        if (kw != "") {
+            QUrl tg;
+            if (m_manualServer->URLforKeyword(kw, tg)) {
+                showManualWindow();
+                m_widgets.manual->openPage(tg);
+            }
+        }
+    }
 }
 
 void MainWindow::showReadyMessage()
@@ -1118,11 +1141,25 @@ void MainWindow::checkInitialResultFormat()
         case 'b': m_actions.settingsResultFormatBinary->setChecked(true); break;
         default : m_actions.settingsResultFormatFixed->setChecked(true);
     }
+    setResultFormat(m_settings->resultFormat);
+}
+
+void MainWindow::checkInitialComplexFormat()
+{
+    switch (m_settings->resultFormatComplex) {
+    case 'c':
+        m_actions.settingsResultFormatCartesian->setChecked(true);
+        break;
+    case 'p':
+        m_actions.settingsResultFormatPolar->setChecked(true);
+        break;
+    }
 }
 
 void MainWindow::checkInitialResultPrecision()
 {
     switch (m_settings->resultPrecision) {
+        case 0: m_actions.settingsResultFormat0Digits->setChecked(true); break;
         case 2: m_actions.settingsResultFormat2Digits->setChecked(true); break;
         case 3: m_actions.settingsResultFormat3Digits->setChecked(true); break;
         case 8: m_actions.settingsResultFormat8Digits->setChecked(true); break;
@@ -1143,59 +1180,54 @@ void MainWindow::checkInitialDigitGrouping()
     }
 }
 
+
+
 void MainWindow::saveSettings()
 {
-    if (m_settings->historySave) {
-        m_settings->history = m_widgets.editor->history();
-        m_settings->historyResults = m_widgets.editor->historyResults();
-    } else {
-        m_settings->history.clear();
-        m_settings->historyResults.clear();
-    }
-
-    if (m_settings->variableSave) {
-        m_settings->variables.clear();
-        QList<Evaluator::Variable> variables = m_evaluator->getUserDefinedVariablesPlusAns();
-        for (int i = 0; i < variables.count(); ++i) {
-            QString name = variables.at(i).name;
-            char* value = HMath::format(variables.at(i).value, 'e', DECPRECISION);
-            m_settings->variables.append(QString("%1=%2").arg(name).arg(value));
-            free(value);
-        }
-    }
-
-    if (m_settings->userFunctionSave) {
-        QList<Evaluator::UserFunctionDescr> userFunctions = m_evaluator->getUserFunctions();
-        for (int i = 0; i < userFunctions.count(); ++i) {
-            Evaluator::UserFunctionDescr descr = userFunctions.at(i);
-            QStringList funcParts;
-            funcParts << descr.name << descr.arguments << descr.expression;
-            m_settings->userFunctions.append(funcParts);
-        }
-    }
-
-    m_settings->windowPosition = m_settings->windowPositionSave ? pos() : QPoint(0, 0);
-    m_settings->windowSize = size();
+    m_settings->windowGeometry = m_settings->windowPositionSave ? saveGeometry() : QByteArray();
+    if (m_widgets.manual)
+        m_settings->manualWindowGeometry = m_settings->windowPositionSave ? m_widgets.manual->saveGeometry() : QByteArray();
     m_settings->windowState = saveState();
     m_settings->displayFont = m_widgets.display->font().toString();
-    m_settings->maximized = isMaximized();
 
     m_settings->save();
+}
+
+void MainWindow::saveSession(QString & fname)
+{
+    QFile file(fname);
+    if (!file.open(QIODevice::WriteOnly)) {
+        return;
+    }
+
+
+    QJsonObject json;
+    m_session->serialize(json);
+    QJsonDocument doc(json);
+    file.write(doc.toJson());
+
+    file.close();
 }
 
 MainWindow::MainWindow()
     : QMainWindow()
 {
+
+    m_session = new Session();
+    m_constants = Constants::instance();
+    m_evaluator = Evaluator::instance();
+    m_functions = FunctionRepo::instance();
+    m_evaluator->setSession(m_session);
+    m_evaluator->initializeBuiltInVariables();
+
     m_translator = 0;
     m_settings = Settings::instance();
+    DMath::complexMode = m_settings->complexNumbers;
 
-    m_widgets.trayIcon = 0;
     m_widgets.manual = 0;
-
-    m_menus.trayIcon = 0;
+    m_widgets.keypad  = 0;
 
     m_conditions.autoAns = false;
-    m_conditions.trayNotify = true;
 
     m_docks.book = 0;
     m_docks.history = 0;
@@ -1211,13 +1243,13 @@ MainWindow::MainWindow()
 
     createUi();
     applySettings();
-    QTimer::singleShot(0, m_widgets.editor, SLOT(setFocus()));
+
+    m_manualServer = ManualServer::instance();
+    connect(this, SIGNAL(languageChanged()), m_manualServer, SLOT(ensureCorrectLanguage()));
 }
 
 MainWindow::~MainWindow()
 {
-    if (m_widgets.trayIcon)
-        m_widgets.trayIcon->hide();
     if (m_docks.book)
         deleteBookDock();
     if (m_docks.constants)
@@ -1230,21 +1262,7 @@ MainWindow::~MainWindow()
         deleteFunctionsDock();
     if (m_docks.history)
         deleteHistoryDock();
-}
-
-bool MainWindow::event(QEvent* event)
-{
-    bool conditionsToMinimize =
-        (event->type() == QEvent::WindowStateChange)
-        && (windowState() & Qt::WindowMinimized)
-        && (m_settings->systemTrayIconVisible);
-
-    if (conditionsToMinimize) {
-        QTimer::singleShot(100, this, SLOT(minimizeToSystemTray()));
-        return true;
-    }
-
-    return QMainWindow::event(event);
+    delete m_session;
 }
 
 void MainWindow::showAboutDialog()
@@ -1256,33 +1274,30 @@ void MainWindow::showAboutDialog()
 
 void MainWindow::clearHistory()
 {
-    m_widgets.display->clear();
-    m_widgets.editor->clearHistory();
-    if (m_settings->historyDockVisible) {
-        HistoryWidget* history = qobject_cast<HistoryWidget *>(m_docks.history->widget());
-        history->clear();
-    }
-    m_settings->history.clear();
-    m_settings->historyResults.clear();
-    QTimer::singleShot(0, m_widgets.editor, SLOT(setFocus()));
+    m_session->clearHistory();
+    clearEditorAndBitfield();
+    emit historyChanged();
 }
 
 void MainWindow::clearEditor()
 {
     m_widgets.editor->clear();
-    QTimer::singleShot(0, m_widgets.editor, SLOT(setFocus()));
+    m_widgets.editor->setFocus();
+}
+
+void MainWindow::clearEditorAndBitfield()
+{
+    clearEditor();
+    if (m_widgets.bitField)
+        m_widgets.bitField->clear();
 }
 
 void MainWindow::copyResultToClipboard()
 {
     QClipboard* cb = QApplication::clipboard();
-    HNumber num = m_evaluator->getVariable(QLatin1String("ans")).value;
-    char* strToCopy = HMath::format(num, m_settings->resultFormat, m_settings->resultPrecision);
-    QString final(strToCopy);
-    if (m_settings->radixCharacter() == ',')
-        final.replace('.', ',');
-    cb->setText(final, QClipboard::Clipboard);
-    free(strToCopy);
+    Quantity q = m_evaluator->getVariable(QLatin1String("ans")).value();
+    QString strToCopy(NumberFormatter::format(q));
+    cb->setText(strToCopy, QClipboard::Clipboard);
 }
 
 void MainWindow::setAngleModeDegree()
@@ -1295,6 +1310,7 @@ void MainWindow::setAngleModeDegree()
     if (m_status.angleUnit)
         m_status.angleUnit->setText(tr("Degree"));
 
+    m_evaluator->initializeAngleUnits();
     emit angleUnitChanged();
 }
 
@@ -1312,18 +1328,18 @@ void MainWindow::increaseOpacity()
 
 void MainWindow::deleteVariables()
 {
-    m_evaluator->unsetAllUserDefinedVariables();
+    m_session->clearVariables();
 
     if (m_settings->variablesDockVisible)
-        m_docks.variables->updateList();
+        m_docks.variables->widget()->updateList();
 }
 
 void MainWindow::deleteUserFunctions()
 {
-    m_evaluator->unsetAllUserFunctions();
+    m_session->clearUserFunctions();
 
     if (m_settings->userFunctionsDockVisible)
-        m_docks.userFunctions->updateList();
+        m_docks.userFunctions->widget()->updateList();
 }
 
 void MainWindow::setResultPrecision2Digits()
@@ -1358,7 +1374,7 @@ void MainWindow::setResultPrecisionAutomatic()
 
 void MainWindow::applySelectedColorScheme()
 {
-    m_settings->colorScheme = m_actionGroups.colorScheme->checkedAction()->data().toInt();
+    m_settings->colorScheme = m_actionGroups.colorScheme->checkedAction()->data().toString();
     emit colorSchemeChanged();
 }
 
@@ -1376,8 +1392,7 @@ void MainWindow::hideStateLabel()
 
 void MainWindow::showSessionLoadDialog()
 {
-    QString errMsg  = tr("File %1 is not a valid session");
-    QString filters = tr("SpeedCrunch Sessions (*.sch);;All Files (*)");
+    QString filters = tr("SpeedCrunch Sessions (*.json);;All Files (*)");
     QString fname = QFileDialog::getOpenFileName(this, tr("Load Session"), QString::null, filters);
     if (fname.isEmpty())
         return;
@@ -1388,122 +1403,57 @@ void MainWindow::showSessionLoadDialog()
         return;
     }
 
-    QTextStream stream(&file);
-
-    // Version of the format.
-    QString version = stream.readLine();
-    if (version != "0.10" && version != "0.12") {
-        QMessageBox::critical(this, tr("Error"), errMsg.arg(fname));
-        return;
-    }
-
-    // Number of calculations.
-    bool ok;
-    int noCalcs = stream.readLine().toInt(&ok);
-    if (ok == false || noCalcs < 0) {
-        QMessageBox::critical(this, tr("Error"), errMsg.arg(fname));
-        return;
-    }
-
     // Ask for merge with current session.
+    bool merge;
     QString mergeMsg = tr(
         "Merge session being loaded with current session?\n"
         "If no, current variables and display will be cleared."
     );
-
     QMessageBox::StandardButton button =
-        QMessageBox::question(this, tr("Question"), mergeMsg,
+        QMessageBox::question(this, tr("Merge?"), mergeMsg,
             QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes);
 
-    if (button == QMessageBox::Cancel)
-        return;
+    if (button == QMessageBox::Yes)
+        merge = true;
+    else if (button == QMessageBox::No)
+        merge = false;
+    else return;
 
-    if (button == QMessageBox::No) {
-        m_widgets.display->clear();
-        deleteVariables();
-        deleteUserFunctions();
-        clearHistory();
-    }
-
-    // Expressions and results.
-    QStringList expList;
-    QStringList resList;
-    for (int i = 0; i < noCalcs; ++i) {
-        QString exp = stream.readLine();
-        QString res = stream.readLine();
-        if (exp.isNull() || res.isNull()) {
-            QMessageBox::critical(this, tr("Error"), errMsg.arg(fname));
-            return;
-        }
-        expList.append(exp);
-        resList.append(res);
-    }
-
-    // FIXME: This keeps the history in three (finally even four) different places.
-    // There should be just one central history and result list, and the clients
-    // editor, display, settings and historyDock should retrieve their data from there.
-    // FIXME: Actually there should be three lists: expressions, values and formats.
-    m_widgets.display->appendHistory(expList, resList);
-    m_widgets.editor->appendHistory(expList, resList);
-
-    if (m_settings->historyDockVisible) {
-        HistoryWidget* history = qobject_cast<HistoryWidget *>(m_docks.history->widget());
-        history->appendHistory(expList);
-    }
-
-    // Variables.
-    int noVars = stream.readLine().toInt(&ok);
-    if (ok == false || noVars < 0) {
-        QMessageBox::critical(this, tr("Error"), errMsg.arg(fname));
-        return;
-    }
-    for (int i = 0; i < noVars; i++) {
-        QString var = stream.readLine();
-        QString val = stream.readLine();
-        if (var.isNull() || val.isNull()) {
-            QMessageBox::critical(this, tr("Error"), errMsg.arg(fname));
-            return;
-        }
-
-        // Only allow the "ans" built-in variable to be set.
-        Evaluator::Variable::Type type = m_evaluator->isBuiltInVariable(var) ?
-            Evaluator::Variable::BuiltIn : Evaluator::Variable::UserDefined;
-        if (type == Evaluator::Variable::BuiltIn && var != "ans")
-            continue;
-
-        HNumber num(val.toLatin1().data());
-        if (num != HMath::nan())
-            m_evaluator->setVariable(var, num, type);
-    }
-
-    if (m_settings->variablesDockVisible)
-        m_docks.variables->updateList();
-
-    if (version == "0.12") {
-        // User functions.
-        int noUsrFuncs = stream.readLine().toInt(&ok);
-        if (ok == false || noUsrFuncs < 0) {
-            QMessageBox::critical(this, tr("Error"), errMsg.arg(fname));
-            return;
-        }
-        for (int i = 0; i < noUsrFuncs; i++) {
-            QString name = stream.readLine();
-            QString args = stream.readLine();
-            QString expr = stream.readLine();
-            if (name.isNull() || args.isNull() || expr.isNull()) {
-                QMessageBox::critical(this, tr("Error"), errMsg.arg(fname));
-                return;
-            }
-            Evaluator::UserFunctionDescr descr(name, args.split(";"), expr);
-            m_evaluator->setUserFunction(descr);
-        }
-
-        if (m_settings->userFunctionsDockVisible)
-            m_docks.userFunctions->updateList();
-    }
+    QByteArray data = file.readAll();
+    QJsonDocument doc(QJsonDocument::fromJson(data));
+    m_session->deSerialize(doc.object(), merge);
 
     file.close();
+    emit historyChanged();
+    emit variablesChanged();
+    emit functionsChanged();
 
+}
+
+void MainWindow::wrapSelection()
+{
+    m_widgets.editor->wrapSelection();
+}
+
+void MainWindow::saveSessionDialog()
+{
+    QString filters = tr("SpeedCrunch Sessions (*.json);;All Files (*)");
+    QString fname = QFileDialog::getSaveFileName(this, tr("Save Session"), QString::null, filters);
+    if (fname.isEmpty())
+        return;
+
+    QFile file(fname);
+    if (!file.open(QIODevice::WriteOnly)) {
+        QMessageBox::critical(this, tr("Error"), tr("Can't write to file %1").arg(fname));
+        return;
+    }
+
+    QJsonObject json;
+    m_session->serialize(json);
+    QJsonDocument doc(json);
+    file.write(doc.toJson());
+
+    file.close();
 }
 
 void MainWindow::showSessionImportDialog()
@@ -1526,16 +1476,15 @@ void MainWindow::showSessionImportDialog()
     );
 
     QMessageBox::StandardButton button =
-        QMessageBox::question(this, tr("Question"), mergeMsg,
+        QMessageBox::question(this, tr("Merge?"), mergeMsg,
             QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel, QMessageBox::Yes);
 
     if (button == QMessageBox::Cancel)
         return;
     if (button == QMessageBox::No) {
-        m_widgets.display->clear();
-        deleteVariables();
-        deleteUserFunctions();
-        clearHistory();
+        m_session->clearHistory();
+        m_session->clearVariables();
+        m_session->clearUserFunctions();
     }
 
     QTextStream stream(&file);
@@ -1548,7 +1497,7 @@ void MainWindow::showSessionImportDialog()
 
         m_evaluator->setExpression(str);
 
-        HNumber result = m_evaluator->evalUpdateAns();
+        Quantity result = m_evaluator->evalUpdateAns();
         if (!m_evaluator->error().isEmpty()) {
             if (!ignoreAll) {
                 QMessageBox::StandardButton button =
@@ -1562,25 +1511,7 @@ void MainWindow::showSessionImportDialog()
                     ignoreAll = true;
             }
         } else {
-            m_widgets.display->append(str, result);
-            if (result.isNan()) {
-                m_widgets.editor->appendHistory(str, "");
-            } else {
-                char* num = HMath::format(result, 'e', DECPRECISION);
-                m_widgets.editor->appendHistory(str, num);
-                free(num);
-                m_widgets.editor->setAnsAvailable(true);
-            }
-
-            if (m_settings->variablesDockVisible)
-                m_docks.variables->updateList();
-            if (m_settings->userFunctionsDockVisible)
-                m_docks.userFunctions->updateList();
-            if (m_settings->historyDockVisible) {
-                HistoryWidget* history = qobject_cast<HistoryWidget*>(m_docks.history->widget());
-                history->append(str);
-            }
-
+            m_session->addHistoryEntry(HistoryEntry(exp, result));
             m_widgets.editor->setText(str);
             m_widgets.editor->selectAll();
             m_widgets.editor->stopAutoCalc();
@@ -1593,8 +1524,9 @@ void MainWindow::showSessionImportDialog()
     }
 
     file.close();
-
-    QTimer::singleShot(0, m_widgets.editor, SLOT(setFocus()));
+    emit historyChanged();
+    emit variablesChanged();
+    emit functionsChanged();
 
     if (!isActiveWindow())
         activateWindow();
@@ -1624,24 +1556,14 @@ void MainWindow::setAutoCalcEnabled(bool b)
     m_widgets.editor->setAutoCalcEnabled(b);
 }
 
-void MainWindow::setHistorySaveEnabled(bool b)
+void MainWindow::setSessionSaveEnabled(bool b)
 {
-    m_settings->historySave = b;
+    m_settings->sessionSave = b;
 }
 
 void MainWindow::setLeaveLastExpressionEnabled(bool b)
 {
     m_settings->leaveLastExpression = b;
-}
-
-void MainWindow::setVariableSaveEnabled(bool b)
-{
-    m_settings->variableSave = b;
-}
-
-void MainWindow::setUserFunctionSaveEnabled(bool b)
-{
-    m_settings->userFunctionSave = b;
 }
 
 void MainWindow::setWindowPositionSaveEnabled(bool b)
@@ -1663,31 +1585,6 @@ void MainWindow::setBitfieldVisible(bool b)
         deleteBitField();
 }
 
-void MainWindow::setSystemTrayIconEnabled(bool b)
-{
-    if (b && !m_widgets.trayIcon && QSystemTrayIcon::isSystemTrayAvailable()) {
-        m_conditions.trayNotify = true;
-        m_widgets.trayIcon = new QSystemTrayIcon(this);
-        m_widgets.trayIcon->setToolTip("SpeedCrunch");
-        m_widgets.trayIcon->setIcon(QPixmap(":/speedcrunch.png"));
-
-        m_menus.trayIcon = new QMenu(this);
-        m_menus.trayIcon->addAction(m_actions.editCopyLastResult);
-        m_menus.trayIcon->addSeparator();
-        m_menus.trayIcon->addAction(m_actions.sessionQuit);
-
-        m_widgets.trayIcon->setContextMenu(m_menus.trayIcon);
-        connect(m_widgets.trayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)),
-            SLOT(handleSystemTrayIconActivation(QSystemTrayIcon::ActivationReason)));
-    } else {
-        if (m_widgets.trayIcon)
-            m_widgets.trayIcon->deleteLater();
-        m_widgets.trayIcon = 0;
-    }
-
-    m_settings->systemTrayIconVisible = b;
-}
-
 void MainWindow::setSyntaxHighlightingEnabled(bool b)
 {
     m_settings->syntaxHighlighting = b;
@@ -1706,16 +1603,12 @@ void MainWindow::setAutoResultToClipboardEnabled(bool b)
     m_settings->autoResultToClipboard = b;
 }
 
-void MainWindow::setParseAllRadixChar(bool b)
+void MainWindow::setComplexNumbers(bool b)
 {
-    m_settings->parseAllRadixChar = b;
-    emit radixCharacterChanged();
-}
-
-void MainWindow::setStrictDigitGrouping(bool b)
-{
-    m_settings->strictDigitGrouping = b;
-    emit radixCharacterChanged();   // FIXME?
+    m_settings->complexNumbers = b;
+    emit radixCharacterChanged();   // FIXME ?
+    m_evaluator->initializeBuiltInVariables();
+    DMath::complexMode = b;
 }
 
 void MainWindow::setAngleModeRadian()
@@ -1728,97 +1621,8 @@ void MainWindow::setAngleModeRadian()
     if (m_status.angleUnit)
         m_status.angleUnit->setText(tr("Radian"));
 
+    m_evaluator->initializeAngleUnits();
     emit angleUnitChanged();
-}
-
-void MainWindow::saveSession()
-{
-    QString filters = tr("SpeedCrunch Sessions (*.sch);;All Files (*)");
-    QString fname = QFileDialog::getSaveFileName(this, tr("Save Session"), QString::null, filters);
-    if (fname.isEmpty())
-        return;
-
-    QFile file(fname);
-    if (!file.open(QIODevice::WriteOnly)) {
-        QMessageBox::critical(this, tr("Error"), tr("Can't write to file %1").arg(fname));
-        return;
-    }
-
-    QTextStream stream(&file);
-
-    // Format version.
-    stream << "0.12" << "\n";
-
-#if 1
-    QStringList history = m_widgets.editor->history();
-    QStringList historyResults = m_widgets.editor->historyResults();
-
-    Q_ASSERT(history.count() == historyResults.count());
-
-    // Number of calculations.
-    stream << history.count() << "\n";
-
-    // Expressions and results.
-    for (int i = 0; i < history.count(); ++i) {
-        stream << history.at(i) << QLatin1String("\n");
-        stream << historyResults.at(i) << QLatin1String("\n");
-    }
-#else
-    // Number of calculations.
-    stream << m_widgets.display->count() << "\n";
-
-    // Expressions and results.
-    QStringList historyLines = m_widgets.display->toPlainText().split(QLatin1String("\n"));
-    int exprCount = 0;
-    for (int i = 0; i < historyLines.count(); ++i) {
-        if (historyLines.at(i).isEmpty())
-            continue;
-
-        // If the expression has a result, just remove the equal sign prefix,
-        // otherwise, export the result as an empty line.
-        if (i + 1 < historyLines.count() && !historyLines.at(i + 1).isEmpty()) {
-            // Expression.
-            stream << historyLines.at(i) << QLatin1String("\n");
-            ++i;
-            // Result.
-            const QString &result = historyLines.at(i);
-            if (result.startsWith(QLatin1String("= ")))
-                stream << result.mid(2) << QLatin1String("\n");
-            else
-                stream << result << QLatin1String("\n");
-        } else {
-            // User function assignment, so there is no result.
-            stream << historyLines.at(i) << QLatin1String("\n\n");
-        }
-        ++exprCount;
-    }
-
-    Q_ASSERT(exprCount == m_widgets.display->count());
-#endif
-
-    // Number of variables.
-    QList<Evaluator::Variable> variables = m_evaluator->getUserDefinedVariablesPlusAns();
-    stream << variables.count() << "\n";
-
-    // Variables.
-    for (int i = 0; i < variables.count(); ++i) {
-        Evaluator::Variable var = variables.at(i);
-        char* value = HMath::format(var.value);
-        stream << var.name << "\n" << value << "\n";
-        free(value);
-    }
-
-    // Number of user functions.
-    QList<Evaluator::UserFunctionDescr> userFunctions = m_evaluator->getUserFunctions();
-    stream << userFunctions.count() << "\n";
-
-    // User functions.
-    for (int i = 0; i < userFunctions.count(); ++i) {
-        Evaluator::UserFunctionDescr descr = userFunctions.at(i);
-        stream << descr.name << "\n" << descr.arguments.join(";") << "\n" << descr.expression << "\n";
-    }
-
-    file.close();
 }
 
 inline static QString documentsLocation()
@@ -1833,7 +1637,7 @@ inline static QString documentsLocation()
 void MainWindow::exportHtml()
 {
     QString fname = QFileDialog::getSaveFileName(this, tr("Export session as HTML"),
-        documentsLocation());
+        documentsLocation(), tr("HTML file (*.html)"));
 
     if (fname.isEmpty())
         return;
@@ -1846,7 +1650,7 @@ void MainWindow::exportHtml()
 
     QTextStream stream(& file);
     stream.setCodec("UTF-8");
-    stream << m_widgets.display->document()->toHtml("utf-8");
+    stream << m_widgets.display->exportHtml();
 
     file.close();
 }
@@ -1854,7 +1658,7 @@ void MainWindow::exportHtml()
 void MainWindow::exportPlainText()
 {
     QString fname = QFileDialog::getSaveFileName(this, tr("Export session as plain text"),
-        documentsLocation());
+                            documentsLocation(), tr("Text file (*.txt);;Any file (*.*)"));
 
     if (fname.isEmpty())
         return;
@@ -1916,6 +1720,17 @@ void MainWindow::showStateLabel(const QString& msg)
     m_widgets.state->move(pos);
 }
 
+void MainWindow::handleAutoCalcMessageAvailable(const QString& message)
+{
+    showStateLabel(message);
+}
+
+void MainWindow::handleAutoCalcQuantityAvailable(const Quantity& quantity)
+{
+    if (m_settings->bitfieldVisible)
+        m_widgets.bitField->updateBits(quantity);
+}
+
 void MainWindow::setFullScreenEnabled(bool b)
 {
     m_settings->windowOnfullScreen = b;
@@ -1975,8 +1790,22 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e)
     return QMainWindow::eventFilter(o, e);
 }
 
+void MainWindow::deleteKeypad()
+{
+    disconnect(m_widgets.keypad);
+    m_widgets.keypad->deleteLater();
+    m_widgets.keypad = 0;
+
+    m_layouts.root->removeItem(m_layouts.keypad);
+    m_layouts.keypad->deleteLater();
+    m_layouts.keypad = 0;
+
+    m_settings->keypadVisible = false;
+}
+
 void MainWindow::deleteStatusBar()
 {
+    statusBar()->hide();
     m_status.angleUnit->deleteLater();
     m_status.angleUnit = 0;
 
@@ -1998,214 +1827,183 @@ void MainWindow::deleteBitField()
 
 void MainWindow::deleteBookDock()
 {
-    Q_ASSERT(m_docks.book);
+    if (!m_docks.book)
+        return;
 
-    removeDockWidget(m_docks.book);
-    disconnect(m_docks.book);
-    m_docks.book->deleteLater();
-    m_docks.book = 0;
-    m_actions.viewFormulaBook->blockSignals(true);
+    deleteDock(m_docks.book);
+    m_docks.book = nullptr;
     m_actions.viewFormulaBook->setChecked(false);
-    m_actions.viewFormulaBook->blockSignals(false);
     m_settings->formulaBookDockVisible = false;
 }
 
 void MainWindow::deleteConstantsDock()
 {
-    Q_ASSERT(m_docks.constants);
+    if (!m_docks.constants)
+        return;
 
-    removeDockWidget(m_docks.constants);
-    disconnect(m_docks.constants);
-    m_docks.constants->deleteLater();
-    m_docks.constants = 0;
-    m_actions.viewConstants->blockSignals(true);
+    deleteDock(m_docks.constants);
+    m_docks.constants = nullptr;
     m_actions.viewConstants->setChecked(false);
-    m_actions.viewConstants->blockSignals(false);
     m_settings->constantsDockVisible = false;
 }
 
 void MainWindow::deleteFunctionsDock()
 {
-    Q_ASSERT(m_docks.functions);
+    if (!m_docks.functions)
+        return;
 
-    removeDockWidget(m_docks.functions);
-    disconnect(m_docks.functions);
-    m_docks.functions->deleteLater();
-    m_docks.functions = 0;
-    m_actions.viewFunctions->blockSignals(true);
+    deleteDock(m_docks.functions);
+    m_docks.functions = nullptr;
     m_actions.viewFunctions->setChecked(false);
-    m_actions.viewFunctions->blockSignals(false);
     m_settings->functionsDockVisible = false;
 }
 
 void MainWindow::deleteHistoryDock()
 {
-    Q_ASSERT(m_docks.history);
+    if (!m_docks.history)
+        return;
 
-    removeDockWidget(m_docks.history);
-    disconnect(m_docks.history);
-    m_docks.history->deleteLater();
-    m_docks.history = 0;
-    m_actions.viewHistory->blockSignals(true);
+    deleteDock(m_docks.history);
+    m_docks.history = nullptr;
     m_actions.viewHistory->setChecked(false);
-    m_actions.viewHistory->blockSignals(false);
     m_settings->historyDockVisible = false;
 }
 
 void MainWindow::deleteVariablesDock()
 {
-    Q_ASSERT(m_docks.variables);
+    if (!m_docks.variables)
+        return;
 
-    removeDockWidget(m_docks.variables);
-    disconnect(m_docks.variables);
-    m_docks.variables->deleteLater();
-    m_docks.variables = 0;
-    m_actions.viewVariables->blockSignals(true);
+    deleteDock(m_docks.variables);
+    m_docks.variables = nullptr;
     m_actions.viewVariables->setChecked(false);
-    m_actions.viewVariables->blockSignals(false);
     m_settings->variablesDockVisible = false;
 }
 
 void MainWindow::deleteUserFunctionsDock()
 {
-    Q_ASSERT(m_docks.userFunctions);
+    if (!m_docks.userFunctions)
+        return;
 
-    removeDockWidget(m_docks.userFunctions);
-    disconnect(m_docks.userFunctions);
-    m_docks.userFunctions->deleteLater();
-    m_docks.userFunctions = 0;
-    m_actions.viewUserFunctions->blockSignals(true);
+    deleteDock(m_docks.userFunctions);
+    m_docks.userFunctions = nullptr;
     m_actions.viewUserFunctions->setChecked(false);
-    m_actions.viewUserFunctions->blockSignals(false);
     m_settings->userFunctionsDockVisible = false;
 }
 
-void MainWindow::setFunctionsDockVisible(bool b)
+void MainWindow::setFunctionsDockVisible(bool b, bool takeFocus)
 {
     if (b)
-        createFunctionsDock();
+        createFunctionsDock(takeFocus);
     else
         deleteFunctionsDock();
 }
 
-void MainWindow::setFormulaBookDockVisible(bool b)
+void MainWindow::setFormulaBookDockVisible(bool b, bool takeFocus)
 {
     if (b)
-        createBookDock();
+        createBookDock(takeFocus);
     else
         deleteBookDock();
 }
 
-void MainWindow::setConstantsDockVisible(bool b)
+void MainWindow::setConstantsDockVisible(bool b, bool takeFocus)
 {
     if (b)
-        createConstantsDock();
+        createConstantsDock(takeFocus);
     else
         deleteConstantsDock();
 }
 
-void MainWindow::setHistoryDockVisible(bool b)
+void MainWindow::setHistoryDockVisible(bool b, bool takeFocus)
 {
     if (b)
-        createHistoryDock();
+        createHistoryDock(takeFocus);
     else
         deleteHistoryDock();
 }
 
-void MainWindow::setVariablesDockVisible(bool b)
+void MainWindow::setVariablesDockVisible(bool b, bool takeFocus)
 {
     if (b)
-        createVariablesDock();
+        createVariablesDock(takeFocus);
     else
         deleteVariablesDock();
 }
 
-void MainWindow::setUserFunctionsDockVisible(bool b)
+void MainWindow::setUserFunctionsDockVisible(bool b, bool takeFocus)
 {
     if (b)
-        createUserFunctionsDock();
+        createUserFunctionsDock(takeFocus);
     else
         deleteUserFunctionsDock();
 }
 
+void MainWindow::setKeypadVisible(bool b)
+{
+    if (b)
+        createKeypad();
+    else
+        deleteKeypad();
+}
+
 void MainWindow::setResultFormatBinary()
 {
-    m_actionGroups.digits->setDisabled(true);
     setResultFormat('b');
+}
 
-    if (m_status.resultFormat)
-        m_status.resultFormat->setText(tr("Binary"));
+void MainWindow::setResultFormatCartesian()
+{
+    if (m_settings->resultFormatComplex == 'c')
+        return;
+
+    m_settings->resultFormatComplex = 'c';
+    emit resultFormatChanged();
 }
 
 void MainWindow::setResultFormatEngineering()
 {
-    m_actionGroups.digits->setEnabled(true);
     setResultFormat('n');
-
-    if (m_status.resultFormat)
-        m_status.resultFormat->setText(tr("Engineering decimal"));
 }
 
 void MainWindow::setResultFormatEngineeringSI()
 {
     m_actionGroups.digits->setEnabled(true);
     setResultFormat('s');
-
-    if (m_status.resultFormat)
-        m_status.resultFormat->setText(tr("Engineering SI decimal"));
 }
 
 void MainWindow::setResultFormatFixed()
 {
-    m_actionGroups.digits->setEnabled(true);
     setResultFormat('f');
-
-    if (m_status.resultFormat)
-        m_status.resultFormat->setText(tr("Fixed decimal"));
 }
 
 void MainWindow::setResultFormatGeneral()
 {
-    m_actionGroups.digits->setEnabled(true);
     setResultFormat('g');
-
-    if (m_status.resultFormat)
-        m_status.resultFormat->setText(tr("General decimal"));
 }
 
 void MainWindow::setResultFormatHexadecimal()
 {
-    m_actionGroups.digits->setDisabled(true);
     setResultFormat('h');
-
-    if (m_status.resultFormat)
-        m_status.resultFormat->setText(tr("Hexadecimal"));
 }
 
 void MainWindow::setResultFormatOctal()
 {
-    m_actionGroups.digits->setDisabled(true);
     setResultFormat('o');
+}
 
-    if (m_status.resultFormat)
-        m_status.resultFormat->setText(tr("Octal"));
+void MainWindow::setResultFormatPolar()
+{
+    if (m_settings->resultFormatComplex == 'p')
+        return;
+
+    m_settings->resultFormatComplex = 'p';
+    emit resultFormatChanged();
 }
 
 void MainWindow::setResultFormatScientific()
 {
-    m_actionGroups.digits->setEnabled(true);
     setResultFormat('e');
-
-    if (m_status.resultFormat)
-        m_status.resultFormat->setText(tr("Scientific decimal"));
-}
-
-void MainWindow::activate()
-{
-    show();
-    raise();
-    activateWindow();
-    m_widgets.editor->setFocus();
 }
 
 void MainWindow::insertConstantIntoEditor(const QString& c)
@@ -2230,7 +2028,7 @@ void MainWindow::insertTextIntoEditor(const QString& s)
 
     if (!isActiveWindow())
         activateWindow();
-    QTimer::singleShot(0, m_widgets.editor, SLOT(setFocus()));
+    m_widgets.editor->setFocus();
 }
 
 void MainWindow::insertFunctionIntoEditor(const QString& f)
@@ -2243,15 +2041,54 @@ void MainWindow::insertFunctionIntoEditor(const QString& f)
     m_widgets.editor->setTextCursor(cursor);
 }
 
-void MainWindow::minimizeToSystemTray()
+void MainWindow::handleKeypadButtonPress(Keypad::Button b)
 {
-    if (!m_widgets.trayIcon)
-        return;
-    hide();
-    m_widgets.trayIcon->show();
-    if (m_conditions.trayNotify)
-        QTimer::singleShot(500, this, SLOT(showSystemTrayMessage()));
-    m_conditions.trayNotify = false;
+    switch (b) {
+    case Keypad::Key0: insertTextIntoEditor("0"); break;
+    case Keypad::Key1: insertTextIntoEditor("1"); break;
+    case Keypad::Key2: insertTextIntoEditor("2"); break;
+    case Keypad::Key3: insertTextIntoEditor("3"); break;
+    case Keypad::Key4: insertTextIntoEditor("4"); break;
+    case Keypad::Key5: insertTextIntoEditor("5"); break;
+    case Keypad::Key6: insertTextIntoEditor("6"); break;
+    case Keypad::Key7: insertTextIntoEditor("7"); break;
+    case Keypad::Key8: insertTextIntoEditor("8"); break;
+    case Keypad::Key9: insertTextIntoEditor("9"); break;
+
+    case Keypad::KeyPlus: insertTextIntoEditor("+"); break;
+    case Keypad::KeyMinus: insertTextIntoEditor("−"); break;
+    case Keypad::KeyTimes: insertTextIntoEditor("×"); break;
+    case Keypad::KeyDivide: insertTextIntoEditor("÷"); break;
+
+    case Keypad::KeyEE: insertTextIntoEditor("e"); break;
+    case Keypad::KeyLeftPar: insertTextIntoEditor("("); break;
+    case Keypad::KeyRightPar: insertTextIntoEditor(")"); break;
+    case Keypad::KeyRaise: insertTextIntoEditor("^"); break;
+    case Keypad::KeyPercent: insertTextIntoEditor("%"); break;
+    case Keypad::KeyFactorial: insertTextIntoEditor("!"); break;
+
+    case Keypad::KeyX: insertTextIntoEditor("x"); break;
+    case Keypad::KeyXEquals: insertTextIntoEditor("x="); break;
+    case Keypad::KeyPi: insertTextIntoEditor("pi"); break;
+    case Keypad::KeyAns: insertTextIntoEditor("ans"); break;
+
+    case Keypad::KeySqrt: insertTextIntoEditor("sqrt("); break;
+    case Keypad::KeyLn: insertTextIntoEditor("ln("); break;
+    case Keypad::KeyExp:insertTextIntoEditor("exp("); break;
+    case Keypad::KeySin: insertTextIntoEditor("sin("); break;
+    case Keypad::KeyCos: insertTextIntoEditor("cos("); break;
+    case Keypad::KeyTan: insertTextIntoEditor("tan("); break;
+    case Keypad::KeyAcos: insertTextIntoEditor("arccos("); break;
+    case Keypad::KeyAtan: insertTextIntoEditor("arctan("); break;
+    case Keypad::KeyAsin: insertTextIntoEditor("arcsin("); break;
+
+    case Keypad::KeyRadixChar: insertTextIntoEditor(QString(m_settings->radixCharacter())); break;
+
+    case Keypad::KeyClear: clearEditor(); break;
+    case Keypad::KeyEquals: evaluateEditorExpression(); break;
+
+    default: break;
+    }
 }
 
 void MainWindow::openUpdatesURL()
@@ -2261,7 +2098,7 @@ void MainWindow::openUpdatesURL()
 
 void MainWindow::openFeedbackURL()
 {
-    QDesktopServices::openUrl(QUrl(QString::fromLatin1("https://code.google.com/p/speedcrunch/issues/entry")));
+    QDesktopServices::openUrl(QUrl(QString::fromLatin1("https://bitbucket.org/heldercorreia/speedcrunch/issues?status=new&status=open")));
 }
 
 void MainWindow::openCommunityURL()
@@ -2274,62 +2111,34 @@ void MainWindow::openNewsURL()
     QDesktopServices::openUrl(QUrl(QString::fromLatin1("http://speedcrunch.blogspot.com/")));
 }
 
+void MainWindow::openDonateURL()
+{
+    QDesktopServices::openUrl(QUrl(QString::fromLatin1("http://speedcrunch.org/donate.html")));
+}
+
 void MainWindow::copy()
 {
     m_copyWidget->copy();
 }
 
-void MainWindow::restoreVariables()
-{
-    for (int k = 0; k < m_settings->variables.count(); ++k) {
-        m_evaluator->setExpression(m_settings->variables.at(k));
-        m_evaluator->eval();
-        QStringList list = m_settings->variables.at(k).split("=");
-        Evaluator::Variable::Type type = Evaluator::Variable::UserDefined;
-        if (list.at(0) == QLatin1String("ans"))
-            type = Evaluator::Variable::BuiltIn;
-        m_evaluator->setVariable(list.at(0), HNumber(list.at(1).toLatin1().data()), type);
-    }
+void MainWindow::restoreSession() {
+    QString data_path = Settings::getDataPath();
+    QDir qdir;
+    qdir.mkpath(data_path);
+    data_path.append("/history.json");
 
-    if (m_docks.variables)
-        m_docks.variables->updateList();
-
-    m_settings->variables.clear();
-}
-
-void MainWindow::restoreUserFunctions()
-{
-    for (int k = 0; k < m_settings->userFunctions.count(); ++k) {
-        QStringList funcParts = m_settings->userFunctions.at(k);
-        Evaluator::UserFunctionDescr descr(funcParts.first(), funcParts.mid(1, funcParts.size() - 2), funcParts.last());
-        m_evaluator->setUserFunction(descr);
-    }
-
-    if (m_docks.userFunctions)
-        m_docks.userFunctions->updateList();
-
-    m_settings->userFunctions.clear();
-}
-
-void MainWindow::restoreHistory()
-{
-    if (m_settings->historyResults.count() != m_settings->history.count()) {
-        clearHistory();
+    QFile file(data_path);
+    if (!file.open(QIODevice::ReadOnly))
         return;
-    }
 
-    m_widgets.editor->setHistory(m_settings->history);
-    m_widgets.editor->setHistoryResults(m_settings->historyResults);
-    m_widgets.display->appendHistory(m_settings->history, m_settings->historyResults);
+    QByteArray data = file.readAll();
+    QJsonDocument doc(QJsonDocument::fromJson(data));
+    m_session->deSerialize(doc.object(), true);
 
-    if (m_docks.history) {
-        HistoryWidget* history = qobject_cast<HistoryWidget*>(m_docks.history->widget());
-        history->setHistory(m_widgets.editor->history());
-    }
-
-    // Free some useless memory.
-    m_settings->history.clear();
-    m_settings->historyResults.clear();
+    file.close();
+    emit historyChanged();
+    emit variablesChanged();
+    emit functionsChanged();
 }
 
 void MainWindow::evaluateEditorExpression()
@@ -2340,7 +2149,7 @@ void MainWindow::evaluateEditorExpression()
         return;
 
     m_evaluator->setExpression(expr);
-    HNumber result = m_evaluator->evalUpdateAns();
+    Quantity result = m_evaluator->evalUpdateAns();
 
     if (!m_evaluator->error().isEmpty()) {
         showStateLabel(m_evaluator->error());
@@ -2348,36 +2157,17 @@ void MainWindow::evaluateEditorExpression()
     }
 
     if (m_evaluator->isUserFunctionAssign()) {
-        result = HMath::nan();
+        result = CMath::nan();
+        emit functionsChanged();
     } else if (result.isNan())
         return;
 
-    m_widgets.display->append(expr, result);
-    m_widgets.display->scrollToBottom();
-
-    if (result.isNan()) {
-        m_widgets.editor->appendHistory(expr, "");
-    } else {
-        const char format = result.format() != 0 ? result.format() : 'e';
-        char* num = HMath::format(result, format, DECPRECISION);
-        m_widgets.editor->appendHistory(expr, num);
-        free(num);
-        m_widgets.editor->setAnsAvailable(true);
-    }
+    m_session->addHistoryEntry(HistoryEntry(expr, result));
+    emit historyChanged();
+    emit variablesChanged();
 
     if (m_settings->bitfieldVisible)
         m_widgets.bitField->updateBits(result);
-
-    if (m_settings->variablesDockVisible)
-        m_docks.variables->updateList();
-
-    if (m_settings->userFunctionsDockVisible)
-        m_docks.userFunctions->updateList();
-
-    if (m_settings->historyDockVisible) {
-        HistoryWidget* history = qobject_cast<HistoryWidget*>(m_docks.history->widget());
-        history->append(expr);
-    }
 
     if (m_settings->autoResultToClipboard)
         copyResultToClipboard();
@@ -2393,15 +2183,6 @@ void MainWindow::evaluateEditorExpression()
         m_conditions.autoAns = true;
 }
 
-void MainWindow::showSystemTrayMessage()
-{
-    QString msg = tr("SpeedCrunch is minimized.\nLeft click the icon to restore it or right click for options.");
-    if (menuBar()->layoutDirection() == Qt::RightToLeft)
-        msg += QChar(0x200E);
-    if (m_widgets.trayIcon)
-        m_widgets.trayIcon->showMessage(QString(), msg, QSystemTrayIcon::NoIcon, 4000);
-}
-
 void MainWindow::clearTextEditSelection(QPlainTextEdit* edit)
 {
     QTextCursor cursor = edit->textCursor();
@@ -2414,6 +2195,7 @@ void MainWindow::clearTextEditSelection(QPlainTextEdit* edit)
 void MainWindow::handleManualClosed()
 {
     disconnect(m_widgets.manual);
+    m_settings->manualWindowGeometry = m_settings->windowPositionSave ? m_widgets.manual->saveGeometry() : QByteArray();
     m_widgets.manual->deleteLater();
     m_widgets.manual = 0;
 }
@@ -2421,6 +2203,7 @@ void MainWindow::handleManualClosed()
 void MainWindow::handleDisplaySelectionChange()
 {
     clearTextEditSelection(m_widgets.editor);
+    m_widgets.editor->autoCalcSelection(m_widgets.display->textCursor().selectedText());
 }
 
 void MainWindow::handleEditorSelectionChange()
@@ -2439,10 +2222,17 @@ void MainWindow::handleCopyAvailable(bool copyAvailable)
 
 void MainWindow::handleBitsChanged(const QString& str)
 {
-    clearEditor();
-    HNumber num(str.toLatin1().data());
-    insertTextIntoEditor(QString(HMath::format(num, 'h')));
+    Quantity num(CNumber(str.toLatin1().data()));
+    auto result = DMath::format(num, Quantity::Format::Fixed() + Quantity::Format::Hexadecimal());
+    insertTextIntoEditor(result);
     showStateLabel(QString("Current value: %1").arg(NumberFormatter::format(num)));
+
+    auto cursor = m_widgets.editor->textCursor();
+    if (cursor.hasSelection())
+        cursor.removeSelectedText();
+    cursor.movePosition(QTextCursor::Left, QTextCursor::MoveAnchor, result.length());
+    cursor.movePosition(QTextCursor::Right, QTextCursor::KeepAnchor, result.length());
+    m_widgets.editor->setTextCursor(cursor);
 }
 
 void MainWindow::handleEditorTextChange()
@@ -2453,14 +2243,14 @@ void MainWindow::handleEditorTextChange()
         if (expr.isEmpty())
             return;
 
-        Tokens tokens = m_evaluator->scan(expr, Evaluator::NoAutoFix);
+        Tokens tokens = m_evaluator->scan(expr);
         if (tokens.count() == 1) {
             bool operatorCondition =
-                tokens.at(0).asOperator() == Token::Plus
-                || tokens.at(0).asOperator() == Token::Minus
-                || tokens.at(0).asOperator() == Token::Asterisk
-                || tokens.at(0).asOperator() == Token::Slash
-                || tokens.at(0).asOperator() == Token::Caret;
+                tokens.at(0).asOperator() == Token::Addition
+                || tokens.at(0).asOperator() == Token::Subtraction
+                || tokens.at(0).asOperator() == Token::Multiplication
+                || tokens.at(0).asOperator() == Token::Division
+                || tokens.at(0).asOperator() == Token::Exponentiation;
             if (operatorCondition) {
                 m_conditions.autoAns = false;
                 expr.prepend("ans");
@@ -2471,38 +2261,16 @@ void MainWindow::handleEditorTextChange()
     }
 }
 
-void MainWindow::handleSystemTrayIconActivation(QSystemTrayIcon::ActivationReason reason)
+void MainWindow::handleDockWidgetVisibilityChanged(bool visible)
 {
-    if (reason == QSystemTrayIcon::Context)
-        m_menus.trayIcon->show();
-    else {
-        showNormal();
-        activateWindow();
-        m_widgets.editor->setFocus();
-        QTimer::singleShot(0, m_widgets.trayIcon, SLOT(hide()));
+    QDockWidget* dock = qobject_cast<QDockWidget*>(sender());
+    if (!dock)
+        return;
 
-        // Work around docks do not reappear if floating.
-        if (m_docks.history && m_docks.history->isFloating()) {
-            m_docks.history->hide();
-            m_docks.history->show();
-        }
-        if (m_docks.functions && m_docks.functions->isFloating()) {
-            m_docks.functions->hide();
-            m_docks.functions->show();
-        }
-        if (m_docks.variables && m_docks.variables->isFloating()) {
-            m_docks.variables->hide();
-            m_docks.variables->show();
-        }
-        if (m_docks.userFunctions && m_docks.userFunctions->isFloating()) {
-            m_docks.userFunctions->hide();
-            m_docks.userFunctions->show();
-        }
-        if (m_docks.constants && m_docks.constants->isFloating()) {
-            m_docks.constants->hide();
-            m_docks.constants->show();
-        }
-    }
+    // Pass the focus back to the editor if the dock that is being hidden has the focus.
+    QWidget* focusWidget = dock->focusWidget();
+    if (focusWidget && !visible && focusWidget->hasFocus())
+        m_widgets.editor->setFocus();
 }
 
 void MainWindow::insertVariableIntoEditor(const QString& v)
@@ -2530,9 +2298,24 @@ void MainWindow::setRadixCharacterComma()
     setRadixCharacter(',');
 }
 
+void MainWindow::setRadixCharacterBoth()
+{
+    setRadixCharacter('*');
+}
+
 void MainWindow::closeEvent(QCloseEvent* e)
 {
+    if (m_widgets.manual) {
+        m_widgets.manual->close();
+    }
     saveSettings();
+    if(m_settings->sessionSave) {
+        QString data_path = Settings::getDataPath();
+        QDir qdir;
+        qdir.mkpath(data_path);
+        data_path.append("/history.json");
+        saveSession(data_path);
+    }
     e->accept();
 }
 
@@ -2547,6 +2330,37 @@ void MainWindow::setResultPrecision(int p)
 
 void MainWindow::setResultFormat(char c)
 {
+    if( m_status.resultFormat ) {
+        switch( c )
+        {
+            case 'b':
+                m_status.resultFormat->setCurrentIndex(5);
+                break;
+            case 'o':
+                m_status.resultFormat->setCurrentIndex(6);
+                break;
+            case 'h':
+                m_status.resultFormat->setCurrentIndex(7);
+                break;
+            case 'n':
+                m_status.resultFormat->setCurrentIndex(2);
+                break;
+            case 's':
+                m_status.resultFormat->setCurrentIndex(3);
+                break;
+            case 'f':
+                m_status.resultFormat->setCurrentIndex(1);
+                break;
+            case 'e':
+                m_status.resultFormat->setCurrentIndex(4);
+                break;
+            case 'g':
+            default:
+                m_status.resultFormat->setCurrentIndex(0);
+                break;
+        }
+    }
+
     if (m_settings->resultFormat == c)
         return;
 
@@ -2576,42 +2390,24 @@ void MainWindow::showLanguageChooserDialog()
 {
     QMap<QString, QString> map;
 
-    map.insert(QLatin1String("American English"), QLatin1String("en_US"));
-    map.insert(QLatin1String("Bahasa Indonesia"), QLatin1String("id_ID"));
-    map.insert(QString::fromUtf8("Català"), QLatin1String("ca_ES"));
-    map.insert(QLatin1String("Dansk"), QLatin1String("da"));
-    map.insert(QLatin1String("Deutsch"), QLatin1String("de_DE"));
-    map.insert(QString::fromUtf8("Ελληνικά"), QLatin1String("el"));
-    map.insert(QLatin1String("Eesti"), QLatin1String("et_EE"));
-    map.insert(QString::fromUtf8("Español"), QLatin1String("es_ES"));
-    map.insert(QString::fromUtf8("Español Argentino"), QLatin1String("es_AR"));
-    map.insert(QLatin1String("Euskara"), QLatin1String("eu_ES"));
-    map.insert(QString::fromUtf8("Français"), QLatin1String("fr_FR"));
-    map.insert(QLatin1String("Italiano"), QLatin1String("it_IT"));
-    map.insert(QString::fromUtf8("Latviešu"), QLatin1String("lv_LV"));
-    map.insert(QString::fromUtf8("Lietuvių"), QLatin1String("lt"));
-    map.insert(QLatin1String("Magyar"), QLatin1String("hu_HU"));
-    map.insert(QLatin1String("Nederlands"), QLatin1String("nl_NL"));
-    map.insert(QString::fromUtf8("Norsk (Bokmål)") + QChar(0x200E), QLatin1String("nb_NO"));
-    map.insert(QString::fromUtf8("Oʻzbekcha"), QLatin1String("uz@Latn"));
-    map.insert(QLatin1String("Polski"), QLatin1String("pl_PL"));
-    map.insert(QString::fromUtf8("Português do Brasil"), QLatin1String("pt_BR"));
-    map.insert(QString::fromUtf8("Português Europeu"), QLatin1String("pt_PT"));
-    map.insert(QString::fromUtf8("Română"), QLatin1String("ro_RO"));
-    map.insert(QString::fromUtf8("Slovenčina"), QLatin1String("sk"));
-    map.insert(QLatin1String("Suomi"), QLatin1String("fi_FI"));
-    map.insert(QLatin1String("Svenska"), QLatin1String("sv_SE"));
-    map.insert(QString::fromUtf8("Česky"), QLatin1String("cs_CZ"));
-    map.insert(QString::fromUtf8("한국어"), QLatin1String("ko_KR"));
-    map.insert(QString::fromUtf8("Tiếng Việt"), QLatin1String("vi"));
-    map.insert(QString::fromUtf8("Türkçe"), QLatin1String("tr_TR"));
-    map.insert(QString::fromUtf8("العربية"), QLatin1String("ar"));
-    map.insert(QString::fromUtf8("עברית"), QLatin1String("he_IL"));
-    map.insert(QString::fromUtf8("Русский"), QLatin1String("ru_RU"));
-    map.insert(QString::fromUtf8("日本語"), QLatin1String("ja_JP"));
-    map.insert(QString::fromUtf8("简化字"), QLatin1String("zh_CN"));
+    // List all available translations from the resource files
+    QDir localeDir(":/locale/", "*.qm");
+    QFileInfoList localeList = localeDir.entryInfoList();
+    for (int i = 0; i < localeList.size(); ++i) {
+        QFileInfo fileInfo = localeList.at(i);
+        QString localeName = fileInfo.baseName();
+        QString langName = QLocale(localeName).nativeLanguageName();
 
-    int current = map.values().indexOf(m_settings->language) + 1;
+        // Kludge for es_AR which shows as "Español"
+        if(localeName == "es_AR") langName = QString::fromUtf8("Español Argentino");
+
+        // The first letter is not always capitalized so force it
+        langName[0] = langName[0].toUpper();
+        map.insert(langName, localeName);
+    }
+
+    const auto values = map.values();
+    int current = values.indexOf(m_settings->language) + 1;
 
     QString defaultKey = tr("System Default");
     QStringList keys(QStringList() << defaultKey << map.keys());
@@ -2639,26 +2435,6 @@ void MainWindow::cycleAngleUnits()
         m_actions.settingsAngleUnitRadian->trigger();
     else if (m_actions.settingsAngleUnitRadian->isChecked())
         m_actions.settingsAngleUnitDegree->trigger();
-}
-
-void MainWindow::cycleResultFormats()
-{
-  if (m_actions.settingsResultFormatGeneral->isChecked())
-      m_actions.settingsResultFormatFixed->trigger();
-  else if (m_actions.settingsResultFormatFixed->isChecked())
-      m_actions.settingsResultFormatEngineering->trigger();
-  else if (m_actions.settingsResultFormatEngineering->isChecked())
-      m_actions.settingsResultFormatEngineeringSI->trigger();
-  else if (m_actions.settingsResultFormatEngineeringSI->isChecked())
-      m_actions.settingsResultFormatScientific->trigger();
-  else if (m_actions.settingsResultFormatScientific->isChecked())
-      m_actions.settingsResultFormatBinary->trigger();
-  else if (m_actions.settingsResultFormatBinary->isChecked())
-      m_actions.settingsResultFormatOctal->trigger();
-  else if (m_actions.settingsResultFormatOctal->isChecked())
-      m_actions.settingsResultFormatHexadecimal->trigger();
-  else if (m_actions.settingsResultFormatHexadecimal->isChecked())
-      m_actions.settingsResultFormatGeneral->trigger();
 }
 
 void MainWindow::precisionDecrease()

@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2007 Ariya Hidayat <ariya@kde.org>
-// Copyright (C) 2008, 2009, 2011 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2008, 2009, 2011 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -24,6 +24,7 @@
 
 class QListWidget;
 class QListWidgetItem;
+class HistoryEntry;
 
 class HistoryWidget : public QWidget
 {
@@ -33,10 +34,7 @@ public:
     explicit HistoryWidget(QWidget *parent = 0);
 
 public slots:
-    void append(const QString &);
-    void appendHistory(const QStringList &);
-    void clear();
-    void setHistory(const QStringList &);
+    void updateHistory();
 
 signals:
     void expressionSelected(const QString &);

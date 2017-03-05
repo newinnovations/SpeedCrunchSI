@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2009 Andreas Scherer <andreas_coder@freenet.de>
-// Copyright (C) 2009, 2011, 2013 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2009, 2011, 2013 @heldercorreia
 // Copyright (C) 2012 Roger Lamb <rlamb1id@gmail.com>
 //
 // This program is free software; you can redistribute it and/or
@@ -22,6 +22,7 @@
 
 #include "core/evaluator.h"
 #include "core/settings.h"
+#include "core/numberformatter.h"
 
 #include <QEvent>
 #include <QTimer>
@@ -33,7 +34,7 @@
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
-static QString formatValue(const HNumber& value);
+static QString formatValue(const Quantity &value);
 
 VariableListWidget::VariableListWidget(QWidget* parent)
     : QWidget(parent)
@@ -84,15 +85,18 @@ VariableListWidget::VariableListWidget(QWidget* parent)
     m_variables->addAction(m_deleteAllAction);
 
     QWidget::setTabOrder(m_searchFilter, m_variables);
+    setFocusProxy(m_searchFilter);
 
     retranslateText();
 
-    connect(m_filterTimer, SIGNAL(timeout()), SLOT(fillTable()));
+    connect(m_filterTimer, SIGNAL(timeout()), SLOT(updateList()));
     connect(m_searchFilter, SIGNAL(textChanged(const QString&)), SLOT(triggerFilter()));
     connect(m_variables, SIGNAL(itemActivated(QTreeWidgetItem*, int)), SLOT(activateItem()));
     connect(m_insertAction, SIGNAL(triggered()), SLOT(activateItem()));
     connect(m_deleteAction, SIGNAL(triggered()), SLOT(deleteItem()));
     connect(m_deleteAllAction, SIGNAL(triggered()), SLOT(deleteAllItems()));
+
+    updateList();
 }
 
 VariableListWidget::~VariableListWidget()
@@ -100,20 +104,20 @@ VariableListWidget::~VariableListWidget()
     m_filterTimer->stop();
 }
 
-void VariableListWidget::fillTable()
+void VariableListWidget::updateList()
 {
     setUpdatesEnabled(false);
 
     m_filterTimer->stop();
     m_variables->clear();
     QString term = m_searchFilter->text();
-    QList<Evaluator::Variable> variables = Evaluator::instance()->getUserDefinedVariables();
+    QList<Variable> variables = Evaluator::instance()->getUserDefinedVariables();
 
     for (int i = 0; i < variables.count(); ++i) {
-        QString varName = variables.at(i).name;
+        QString varName = variables.at(i).identifier();
 
         QStringList namesAndValues;
-        namesAndValues << varName << formatValue(variables.at(i).value);
+        namesAndValues << varName << formatValue(variables.at(i).value());
 
         if (term.isEmpty()
             || namesAndValues.at(0).contains(term, Qt::CaseInsensitive)
@@ -137,7 +141,6 @@ void VariableListWidget::fillTable()
         m_noMatchLabel->raise();
     }
 
-    m_searchFilter->setFocus();
     setUpdatesEnabled(true);
 }
 
@@ -154,7 +157,7 @@ void VariableListWidget::retranslateText()
     m_deleteAction->setText(tr("Delete"));
     m_deleteAllAction->setText(tr("Delete All"));
 
-    QTimer::singleShot(0, this, SLOT(fillTable()));
+    QTimer::singleShot(0, this, SLOT(updateList()));
 }
 
 QTreeWidgetItem* VariableListWidget::currentItem() const
@@ -166,7 +169,7 @@ void VariableListWidget::activateItem()
 {
     if (!currentItem() || m_variables->selectedItems().isEmpty())
         return;
-    emit itemActivated(currentItem()->text(0));
+    emit variableSelected(currentItem()->text(0));
 }
 
 void VariableListWidget::deleteItem()
@@ -174,13 +177,13 @@ void VariableListWidget::deleteItem()
     if (!currentItem() || m_variables->selectedItems().isEmpty())
         return;
     Evaluator::instance()->unsetVariable(currentItem()->text(0));
-    fillTable();
+    updateList();
 }
 
 void VariableListWidget::deleteAllItems()
 {
     Evaluator::instance()->unsetAllUserDefinedVariables();
-    fillTable();
+    updateList();
 }
 
 void VariableListWidget::triggerFilter()
@@ -202,20 +205,14 @@ void VariableListWidget::changeEvent(QEvent* event)
 void VariableListWidget::keyPressEvent(QKeyEvent* event)
 {
     if (event->key() == Qt::Key_Delete) {
-        Evaluator::instance()->unsetVariable(currentItem()->text(0));
-        fillTable();
+        deleteItem();
         event->accept();
         return;
     }
     QWidget::keyPressEvent(event);
 }
 
-static QString formatValue(const HNumber& value)
+static QString formatValue(const Quantity& value)
 {
-    char* formatted = HMath::format(value, 'g');
-    QString result = QString::fromLatin1(formatted);
-    if (Settings::instance()->radixCharacter() != '.')
-        result.replace('.', Settings::instance()->radixCharacter());
-    free(formatted);
-    return result;
+    return NumberFormatter::format(value);
 }

@@ -1050,7 +1050,7 @@ cattokens(
           case   6: cbuf[0] = 'M'; break;
           case   3: cbuf[0] = 'k'; break;
           case  -3: cbuf[0] = 'm'; break;
-          case  -6: cbuf[0] = 0xb5; break; // µ
+          case  -6: cbuf[0] = 0xc2; cbuf[1] = 0xb5; break; // µ
           case  -9: cbuf[0] = 'n'; break;
           case -12: cbuf[0] = 'p'; break;
           case -15: cbuf[0] = 'f'; break;

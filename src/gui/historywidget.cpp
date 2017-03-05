@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2007 Ariya Hidayat <ariya@kde.org>
-// Copyright (C) 2008, 2009, 2011 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2008, 2009, 2011 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -18,6 +18,9 @@
 // Boston, MA 02110-1301, USA.
 
 #include "gui/historywidget.h"
+#include "core/sessionhistory.h"
+#include "core/evaluator.h"
+#include "core/session.h"
 
 #include <QEvent>
 #include <QListWidget>
@@ -39,32 +42,22 @@ HistoryWidget::HistoryWidget(QWidget *parent)
     setLayout(layout);
 
     connect(m_list, SIGNAL(itemActivated(QListWidgetItem *)), SLOT(handleItem(QListWidgetItem *)));
+
+    updateHistory();
 }
 
-void HistoryWidget::clear()
+void HistoryWidget::updateHistory()
 {
+    QList<HistoryEntry> hist = Evaluator::instance()->session()->historyToList();
     m_list->clear();
-}
-
-void HistoryWidget::append(const QString &h)
-{
-    m_list->addItem(h);
     m_list->clearSelection();
+    QStringList l;
+
+    for(int i=0; i<hist.size(); ++i)
+        l.append(hist[i].expr());
+
+    m_list->addItems(l);
     m_list->scrollToBottom();
-}
-
-void HistoryWidget::appendHistory(const QStringList &h)
-{
-    m_list->insertItems(0, h);
-    m_list->setCurrentRow(h.count() - 1);
-    m_list->scrollToItem(m_list->item(h.count()), QListWidget::PositionAtTop);
-    m_list->clearSelection();
-}
-
-void HistoryWidget::setHistory(const QStringList &h)
-{
-    m_list->clear();
-    appendHistory(h);
 }
 
 void HistoryWidget::handleItem(QListWidgetItem *item)

@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2004 Ariya Hidayat <ariya@kde.org>
-// Copyright (C) 2008, 2009, 2010, 2013 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2008-2016 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -21,7 +21,13 @@
 #define CORE_EVALUATOR_H
 
 #include "core/functions.h"
+#include "core/opcode.h"
+#include "core/variable.h"
+#include "core/userfunction.h"
+
 #include "math/hmath.h"
+#include "math/cmath.h"
+#include "math/quantity.h"
 
 #include <QHash>
 #include <QObject>
@@ -30,80 +36,102 @@
 #include <QStringList>
 #include <QVector>
 
+class Session;
+
 class Token {
 public:
-    enum Op { InvalidOp = 0, Plus, Minus, Asterisk, Slash, Backslash, Caret,
-              Super0, Super1, Super2, Super3, Super4, Super5, Super6, Super7, Super8, Super9,
-              LeftPar, RightPar, Semicolon, Percent, Exclamation, Equal, Modulo,
-              LeftShift, RightShift, Ampersand, Pipe };
-    enum Type { stxUnknown, stxNumber, stxIdentifier, stxOperator, stxOpenPar, stxClosePar, stxSep };
+    enum Operator {
+        Invalid = 0,
+        Addition, Subtraction, Multiplication,
+        Division, IntegerDivision, Exponentiation,
+        Super0, Super1, Super2, Super3, Super4,
+        Super5, Super6, Super7, Super8, Super9,
+        AssociationStart, AssociationEnd,
+        ListSeparator, Factorial, Assignment, Modulo,
+        ArithmeticLeftShift, ArithmeticRightShift,
+        BitwiseLogicalAND, BitwiseLogicalOR,
+        UnitConversion,
+        Function // For managing shift/reduce conflicts.
+    };
+    enum Type {
+        stxUnknown, stxNumber, stxIdentifier, stxAbstract, // isOperand
+        stxOperator, stxOpenPar, stxClosePar, stxSep // isOperator
+    };
 
     static const Token null;
 
-    Token(Type type = stxUnknown, const QString& text = QString::null, int pos = -1);
+    Token(Type = stxUnknown, const QString& = QString::null, int pos = -1,
+          int size = -1);
     Token(const Token&);
 
-    HNumber asNumber() const;
-    Op asOperator() const;
+    Quantity asNumber() const;
+    Operator asOperator() const;
     QString description() const;
     bool isNumber() const { return m_type == stxNumber; }
     bool isOperator() const { return m_type >= stxOperator; }
     bool isIdentifier() const { return m_type == stxIdentifier; }
+    bool isAbstract() const { return m_type == stxAbstract; }
+    bool isOperand() const { return isNumber() || isIdentifier()
+                                    || isAbstract(); }
     int pos() const { return m_pos; }
+    void setPos(int pos) { m_pos = pos; }
+    int size() const { return m_size; }
+    void setSize(int size) { m_size = size; }
     QString text() const { return m_text; }
     Type type() const { return m_type; }
+    int minPrecedence() const { return m_minPrecedence; }
+    void setMinPrecedence(int value) { m_minPrecedence = value; }
 
     Token& operator=(const Token&);
 
 protected:
+    // Start position of the text that token represents in the expression
+    // (might include extra space characters).
     int m_pos;
+    // Size of text that token represents in the expression
+    // (might include extra space characters).
+    int m_size;
+    // Precedence of the operator with the lowest precedence contained
+    // in this token.
+    int m_minPrecedence;
+    // Normalized version of that token text (only valid when the token
+    // represents a single token).
     QString m_text;
     Type m_type;
 };
 
 class Tokens : public QVector<Token> {
 public:
-    Tokens() : QVector<Token>(), m_valid(true) { }
+    Tokens()
+        : QVector<Token>()
+        , m_valid(true)
+    { }
 
     bool valid() const { return m_valid; }
     void setValid(bool v) { m_valid = v; }
+
+#ifdef EVALUATOR_DEBUG
+    void append(const Token&);
+#endif  /* EVALUATOR_DEBUG */
 
 protected:
     bool m_valid;
 };
 
-
 class Evaluator : public QObject {
     Q_OBJECT
+    using ForceBuiltinVariableErasure = bool;
 
 public:
-    struct Variable {
-        enum Type { BuiltIn, UserDefined };
-        Variable() : name(""), value(HNumber(0)) { }
-        Variable(const QString& n, HNumber v, Type t = UserDefined) : name(n), value(v), type(t) { }
-        bool operator==(const Variable& other) const { return name == other.name; }
-        QString name;
-        HNumber value;
-        Type type;
-    };
-
-    struct UserFunctionDescr {
-        QString name;
-        QStringList arguments;
-        QString expression;
-
-        UserFunctionDescr(QString name, QStringList arguments, QString expression)
-            : name(name), arguments(arguments), expression(expression) {}
-    };
-
-    // Needed only for issue 160 workaround.
-    enum AutoFixPolicy { AutoFix, NoAutoFix };
-
     static Evaluator* instance();
     void reset();
 
+    void setSession(Session*);
+    const Session* session();
+
     static bool isSeparatorChar(const QChar&);
     static bool isRadixChar(const QChar&);
+    static QString fixNumberRadix(const QString&);
 
     QString checkSIPrefix(QChar& ch) const;
     bool isSIPrefix(QChar& ch) const;
@@ -111,12 +139,12 @@ public:
     QString autoFix(const QString&);
     QString dump();
     QString error() const;
-    HNumber eval();
-    HNumber evalNoAssign();
-    HNumber evalUpdateAns();
+    Quantity eval();
+    Quantity evalNoAssign();
+    Quantity evalUpdateAns();
     QString expression() const;
     bool isValid();
-    Tokens scan(const QString&, AutoFixPolicy = AutoFix) const;
+    Tokens scan(const QString&) const;
     void setExpression(const QString&);
     Tokens tokens() const;
     bool isUserFunctionAssign() const;
@@ -125,18 +153,20 @@ public:
     QList<Variable> getVariables() const;
     QList<Variable> getUserDefinedVariables() const;
     QList<Variable> getUserDefinedVariablesPlusAns() const;
-    void setVariable(const QString&, HNumber, Variable::Type = Variable::UserDefined);
-    void unsetVariable(const QString&);
+    void setVariable(const QString&, Quantity,
+                     Variable::Type = Variable::UserDefined);
+    void unsetVariable(const QString&, ForceBuiltinVariableErasure = false);
     void unsetAllUserDefinedVariables();
     bool isBuiltInVariable(const QString&) const;
     bool hasVariable(const QString&) const;
+    void initializeBuiltInVariables();
+    void initializeAngleUnits();
 
-    //UserFunctionDescr getUserFunction(const QString&) const;
-    QList<UserFunctionDescr> getUserFunctions() const;
-    void setUserFunction(const UserFunctionDescr&);
+    QList<UserFunction> getUserFunctions() const;
+    void setUserFunction(const UserFunction&);
     void unsetUserFunction(const QString&);
     void unsetAllUserFunctions();
-    bool hasUserFunction(const QString&);
+    bool hasUserFunction(const QString&) const;
 
 protected:
     void compile(const Tokens&);
@@ -144,33 +174,6 @@ protected:
 private:
     Evaluator();
     Q_DISABLE_COPY(Evaluator)
-
-    struct Opcode {
-        enum { Nop = 0, Load, Ref, Function, Add, Sub, Neg, Mul, Div, Pow,
-               Fact, Modulo, IntDiv, LSh, RSh, BAnd, BOr };
-
-        unsigned type;
-        unsigned index;
-
-        Opcode() : type(Nop), index(0) {}
-        Opcode(unsigned t) : type(t), index(0) {}
-        Opcode(unsigned t, unsigned i): type(t), index(i) {}
-    };
-
-    struct UserFunction {
-        UserFunctionDescr descr;
-
-        QVector<HNumber> constants;
-        QStringList identifiers;
-        QVector<Opcode> opcodes;
-
-        bool inUse;
-
-        UserFunction(UserFunctionDescr& descr)
-            : descr(descr), inUse(false) {}
-        UserFunction(QString name, QStringList arguments, QString expression)
-            : descr(name, arguments, expression), inUse(false) {}
-    };
 
     bool m_dirty;
     QString m_error;
@@ -180,18 +183,25 @@ private:
     bool m_assignFunc;
     QStringList m_assignArg;
     QVector<Opcode> m_codes;
-    QVector<HNumber> m_constants;
+    QVector<Quantity> m_constants;
     QStringList m_identifiers;
-    QHash<QString, Variable> m_variables;
-    QHash<QString, UserFunction*> m_userFunctions;
+    Session* m_session;
+    QSet<QString> m_functionsInUse;
 
-    const HNumber& checkOperatorResult(const HNumber&);
+    const Quantity& checkOperatorResult(const Quantity&);
     static QString stringFromFunctionError(Function*);
-    void initializeBuiltInVariables();
-    HNumber exec(const QVector<Opcode>& opcodes, const QVector<HNumber>& constants,
-                 const QStringList& identifiers);
-    HNumber execUserFunction(UserFunction* function, QVector<HNumber>& arguments);
-    UserFunction* getUserFunction(const QString&) const;
+    Quantity exec(const QVector<Opcode>& opcodes,
+                  const QVector<Quantity>& constants,
+                  const QStringList& identifiers);
+    Quantity execUserFunction(const UserFunction* function,
+                              QVector<Quantity>& arguments);
+    const UserFunction* getUserFunction(const QString&) const;
+
+    bool isFunction(Token token) {
+        return token.isIdentifier()
+                && (FunctionRepo::instance()->find(token.text())
+                    || hasUserFunction(token.text()));
+    }
 };
 
 #endif

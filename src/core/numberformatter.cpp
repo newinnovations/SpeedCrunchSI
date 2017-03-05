@@ -1,5 +1,6 @@
-// This file is part of the SpeedCrunch project
-// Copyright (C) 2013 Helder Correia <helder.pereira.correia@gmail.com>
+﻿// This file is part of the SpeedCrunch project
+// Copyright (C) 2013 @heldercorreia
+// Copyright (C) 2015 Pol Welter <polwelter@gmail.com>
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -19,16 +20,77 @@
 #include "core/numberformatter.h"
 
 #include "core/settings.h"
-#include "math/hmath.h"
+#include "math/quantity.h"
 
-QString NumberFormatter::format(const HNumber& number)
+QString NumberFormatter::format(Quantity q)
 {
     Settings* settings = Settings::instance();
-    const char format = number.format() != 0 ? number.format() : settings->resultFormat;
-    char* str = HMath::format(number, format, settings->resultPrecision);
-    QString result = QString::fromLatin1(str);
-    free(str);
-    if (settings->radixCharacter() != '.')
-        result.replace('.', settings->radixCharacter());
+
+    Quantity::Format format = q.format();
+    if (format.base == Quantity::Format::Base::Null) {
+        switch (settings->resultFormat) {
+        case 'b':
+            format.base = Quantity::Format::Base::Binary;
+            format.mode = Quantity::Format::Mode::Fixed;
+            break;
+        case 'o':
+            format.base = Quantity::Format::Base::Octal;
+            format.mode = Quantity::Format::Mode::Fixed;
+            break;
+        case 'h':
+            format.base = Quantity::Format::Base::Hexadecimal;
+            format.mode = Quantity::Format::Mode::Fixed;
+            break;
+        case 'n':
+            format.base = Quantity::Format::Base::Decimal;
+            format.mode = Quantity::Format::Mode::Engineering;
+            break;
+        case 's':
+            format.base = Quantity::Format::Base::Decimal;
+            format.mode = Quantity::Format::Mode::EngineeringSI;
+            break;
+        case 'f':
+            format.base = Quantity::Format::Base::Decimal;
+            format.mode = Quantity::Format::Mode::Fixed;
+            break;
+        case 'e':
+            format.base = Quantity::Format::Base::Decimal;
+            format.mode = Quantity::Format::Mode::Scientific;
+            break;
+        case 'g':
+        default:
+            format.base = Quantity::Format::Base::Decimal;
+            format.mode = Quantity::Format::Mode::General;
+            break;
+        }
+    }
+    if (format.mode == Quantity::Format::Mode::Null)
+        format.mode = Quantity::Format::Mode::General;
+    if (format.precision == Quantity::Format::PrecisionNull)
+        format.precision = settings->resultPrecision;
+    if (format.notation == Quantity::Format::Notation::Null) {
+        if (settings->resultFormatComplex == 'c')
+            format.notation = Quantity::Format::Notation::Cartesian;
+        else if (settings->resultFormatComplex == 'p')
+            format.notation = Quantity::Format::Notation::Polar;
+    }
+
+    QString result = DMath::format(q, format);
+
+    if (settings->radixCharacter() == ',')
+        result.replace('.', ',');
+
+    result.replace('-', QString::fromUtf8("−"));
+
+    // Replace all spaces between units with dot operator.
+    int emptySpaces = 0;
+    for (auto& ch : result) {
+        if (ch.isSpace()) {
+            ++emptySpaces;
+            if (emptySpaces > 1)
+                ch = u'⋅';
+        }
+    }
+
     return result;
 }

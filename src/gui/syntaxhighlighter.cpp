@@ -1,6 +1,7 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2007 Ariya Hidayat <ariya@kde.org>
-// Copyright (C) 2007-2009, 2013, 2014 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2007-2016 @heldercorreia
+// Copyright (c) 2013 Larswad
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -24,59 +25,117 @@
 #include "core/functions.h"
 #include "core/settings.h"
 
+#include <QtCore/QDir>
+#include <QtCore/QJsonObject>
 #include <QLatin1String>
 #include <QApplication>
 #include <QPalette>
 #include <QPlainTextEdit>
+#include <QTextDocument>
+#include <QTextDocumentFragment>
 
-#define SH(x,r,g,b) (setColorForRole(SyntaxHighlighter::x, QColor(r,g,b)))
-
-void SyntaxHighlighter::setColorScheme(SyntaxHighlighter::ColorScheme id)
+static const QVector<QString> colorSchemeSearchPaths()
 {
-    switch (id) {
-    case SyntaxHighlighter::Sublime:
-        SH(Cursor, 100, 200, 255);  SH(Function, 213, 38, 106);   SH(EditorBackground, 29, 30, 24);
-        SH(Number, 173, 119, 158);  SH(Operator, 242, 248, 214);
-        SH(Parens, 103, 112, 88);   SH(Variable, 64, 181, 238);
-        SH(Result, 197, 218, 107);  SH(ScrollBar, 110, 120, 100);
-        SH(Comment, 55, 55, 50);    SH(Separator, 197, 218, 107);
-        SH(Matched, 163, 126, 219); SH(Background, 39, 40, 34);
-        break;
-    case SyntaxHighlighter::Terminal:
-        SH(Cursor, 140, 100, 140);  SH(Function, 239, 41, 40);    SH(EditorBackground, 38, 0, 26);
-        SH(Number, 255, 255, 255);  SH(Operator, 196, 160, 0);
-        SH(Parens, 173, 127, 168);  SH(Variable, 74, 154, 7);
-        SH(Result, 104, 159, 207);  SH(ScrollBar, 140, 100, 140);
-        SH(Comment, 65, 25, 55);    SH(Separator, 100, 80, 123);
-        SH(Matched, 100, 80, 123);  SH(Background, 48, 10, 36);
-        break;
-    case SyntaxHighlighter::SolarizedDark:
-        SH(Cursor, 220, 50, 47);    SH(Function, 38, 139, 210);   SH(EditorBackground, 0, 43, 54);
-        SH(Number, 131, 148, 150);  SH(Operator, 181, 137, 0);
-        SH(Parens, 253, 246, 227);  SH(Variable, 133, 153, 0);
-        SH(Result, 253, 246, 227);  SH(ScrollBar, 211, 54, 130);
-        SH(Comment, 88, 110, 117);  SH(Separator, 181, 137, 0);
-        SH(Matched, 108, 113, 196); SH(Background, 7, 54, 66);
-        break;
-    case SyntaxHighlighter::SolarizedLight:
-        SH(Cursor, 220, 50, 47);    SH(Function, 38, 139, 210);   SH(EditorBackground, 238, 232, 213);
-        SH(Number, 101, 123, 131);  SH(Operator, 181, 137, 0);
-        SH(Parens, 0, 43, 54);      SH(Variable, 133, 153, 0);
-        SH(Result, 7, 54, 66);      SH(ScrollBar, 203, 75, 22);
-        SH(Comment, 88, 110, 117);  SH(Separator, 181, 137, 0);
-        SH(Matched, 108, 113, 196); SH(Background, 253, 246, 227);
-        break;
-    case SyntaxHighlighter::Standard:
+    static QVector<QString> searchPaths;
+    if (searchPaths.isEmpty()) {
+        // By only populating the paths in a function when they're used, we ensure all the QApplication
+        // fields that are used by QStandardPaths are set.
+        searchPaths.append(QString("%1/color-schemes").arg(Settings::getDataPath()));
+        searchPaths.append(QStringLiteral(":/color-schemes"));
+    }
+    return searchPaths;
+}
+
+QColor getFallbackColor(ColorScheme::Role role)
+{
+    switch (role) {
+    case ColorScheme::Background:
+    case ColorScheme::EditorBackground:
+        return QApplication::palette().color(QPalette::Base);
     default:
-        SH(Cursor, 255, 100, 100);  SH(Function, 74, 154, 7);     SH(EditorBackground, 220, 220, 220);
-        SH(Number, 40, 40, 40);     SH(Operator, 150, 150, 150);
-        SH(Parens, 255, 160, 50);   SH(Variable, 239, 41, 40);
-        SH(Result, 0, 100, 200);    SH(ScrollBar, 255, 120, 50);
-        SH(Comment, 210, 210, 210); SH(Separator, 100, 80, 123);
-        SH(Matched, 100, 80, 123);  SH(Background, 255, 255, 255);
-        break;
+        return QApplication::palette().color(QPalette::Text);
     }
 }
+
+ColorScheme::ColorScheme(const QJsonDocument& doc)
+    : m_valid(false)
+{
+    static const QVector<std::pair<QString, ColorScheme::Role>> RoleNames {
+        { QStringLiteral("cursor"), ColorScheme::Cursor },
+        { QStringLiteral("number"), ColorScheme::Number },
+        { QStringLiteral("parens"), ColorScheme::Parens },
+        { QStringLiteral("result"), ColorScheme::Result },
+        { QStringLiteral("comment"), ColorScheme::Comment },
+        { QStringLiteral("matched"), ColorScheme::Matched },
+        { QStringLiteral("function"), ColorScheme::Function },
+        { QStringLiteral("operator"), ColorScheme::Operator },
+        { QStringLiteral("variable"), ColorScheme::Variable },
+        { QStringLiteral("scrollbar"), ColorScheme::ScrollBar },
+        { QStringLiteral("separator"), ColorScheme::Separator },
+        { QStringLiteral("background"), ColorScheme::Background },
+        { QStringLiteral("editorbackground"), ColorScheme::EditorBackground },
+    };
+    if (!doc.isObject())
+        return;
+    auto obj = doc.object();
+    for (auto& role : RoleNames) {
+        auto v = obj.value(role.first);
+        if (v.isUndefined())
+            // Having a key missing is fine...
+            continue;
+        auto color = QColor(v.toString());
+        if (!color.isValid())
+            // ...having one that's not a color is not.
+            return;
+        m_colors.insert(role.second, color);
+    }
+    m_valid = true;
+}
+
+QColor ColorScheme::colorForRole(Role role) const
+{
+    QColor color = m_colors[role];
+    if (!color.isValid())
+        return getFallbackColor(role);
+    else
+        return color;
+}
+
+QStringList ColorScheme::enumerate()
+{
+    QMap<QString, void*> colorSchemes;
+    for (auto& searchPath : colorSchemeSearchPaths()) {
+        QDir dir(searchPath);
+        dir.setFilter(QDir::Files | QDir::Readable);
+        dir.setNameFilters({ QString("*.%1").arg(m_colorSchemeExtension) });
+        const auto infoList = dir.entryInfoList();
+        for (auto& info : infoList) // TODO: Use Qt 5.7's qAsConst().
+            colorSchemes.insert(info.completeBaseName(), nullptr);
+    }
+    // Since this is a QMap, the keys are already sorted in ascending order.
+    return colorSchemes.keys();
+}
+
+ColorScheme ColorScheme::loadFromFile(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return ColorScheme();
+    // TODO: Better error handling.
+    return ColorScheme(QJsonDocument::fromJson(file.readAll()));
+}
+
+ColorScheme ColorScheme::loadByName(const QString& name)
+{
+    for (auto& path : colorSchemeSearchPaths()) {
+        auto fileName = QString("%1/%2.%3").arg(path, name, m_colorSchemeExtension);
+        auto colorScheme = loadFromFile(fileName);
+        if (colorScheme.isValid())
+            return colorScheme;
+    }
+    return ColorScheme();
+}
+
 
 SyntaxHighlighter::SyntaxHighlighter(QPlainTextEdit* edit)
     : QSyntaxHighlighter(edit)
@@ -85,16 +144,21 @@ SyntaxHighlighter::SyntaxHighlighter(QPlainTextEdit* edit)
     update();
 }
 
+void SyntaxHighlighter::setColorScheme(ColorScheme&& colorScheme) {
+    m_colorScheme = colorScheme;
+}
+
 void SyntaxHighlighter::highlightBlock(const QString& text)
 {
-    if (!Settings::instance()->syntaxHighlighting) {
-        setFormat(0, text.length(), colorForRole(Number));
+    // Default color for the text
+    setFormat(0, text.length(), colorForRole(ColorScheme::Number));
+
+    if (!Settings::instance()->syntaxHighlighting)
         return;
-    }
 
     if (text.startsWith(QLatin1String("="))) {
-        setFormat(0, 1, colorForRole(Operator));
-        setFormat(1, text.length(), colorForRole(Result));
+        setFormat(0, 1, colorForRole(ColorScheme::Operator));
+        setFormat(1, text.length(), colorForRole(ColorScheme::Result));
         if (Settings::instance()->digitGrouping > 0)
             groupDigits(text, 1, text.length() - 1);
         return;
@@ -102,9 +166,9 @@ void SyntaxHighlighter::highlightBlock(const QString& text)
 
     int questionMarkIndex = text.indexOf('?');
     if (questionMarkIndex != -1)
-        setFormat(questionMarkIndex, text.length(), colorForRole(Comment));
+        setFormat(questionMarkIndex, text.length(), colorForRole(ColorScheme::Comment));
 
-    Tokens tokens = Evaluator::instance()->scan(text, Evaluator::NoAutoFix);
+    Tokens tokens = Evaluator::instance()->scan(text);
 
     for (int i = 0; i < tokens.count(); ++i) {
         const Token& token = tokens.at(i);
@@ -115,61 +179,46 @@ void SyntaxHighlighter::highlightBlock(const QString& text)
         switch (token.type()) {
         case Token::stxNumber:
         case Token::stxUnknown:
-            color = colorForRole(Number);
+            color = colorForRole(ColorScheme::Number);
             // TODO: color thousand separators differently? It might help troubleshooting issues
-            //       in non-strict mode where more than 95k characters are valid separators.
             break;
 
         case Token::stxOperator:
-            color = colorForRole(Operator);
+            color = colorForRole(ColorScheme::Operator);
             break;
 
         case Token::stxSep:
-            color = colorForRole(Separator);
+            color = colorForRole(ColorScheme::Separator);
             break;
 
         case Token::stxOpenPar:
         case Token::stxClosePar:
-            color = colorForRole(Parens);
+            color = colorForRole(ColorScheme::Parens);
             break;
 
         case Token::stxIdentifier:
-            color = colorForRole(Variable);
+            color = colorForRole(ColorScheme::Variable);
             if (Evaluator::instance()->hasUserFunction(token.text())
                 || functionNames.contains(tokenText, Qt::CaseInsensitive))
-                color = colorForRole(Function);
+                color = colorForRole(ColorScheme::Function);
             break;
 
         default:
             break;
         };
 
-        Q_ASSERT(token.pos() >= 0); // Why would pos() ever return a negative value?
-
-        // The token text might be a modified version of the displayed text,
-        // so we must not rely on it to find out the number of character to highlight.
-        int end = (questionMarkIndex != -1) ? questionMarkIndex : text.length();
-        if (i + 1 < tokens.size())
-        {
-            const Token& nextToken = tokens.at(i + 1);
-
-            Q_ASSERT(nextToken.pos() >= 0);
-
-            end = nextToken.pos();
-        }
-
-        setFormat(token.pos(), end - token.pos(), color);
+        setFormat(token.pos(), token.size(), color);
         if (token.type() == Token::stxNumber && Settings::instance()->digitGrouping > 0)
-            groupDigits(text, token.pos(), end - token.pos());
+            groupDigits(text, token.pos(), token.size());
     }
 }
 
 void SyntaxHighlighter::update()
 {
-    ColorScheme id = static_cast<ColorScheme>(Settings::instance()->colorScheme);
-    setColorScheme(id);
+    QString name = Settings::instance()->colorScheme;
+    setColorScheme(ColorScheme::loadByName(name));
 
-    QColor backgroundColor = colorForRole(Background);
+    QColor backgroundColor = colorForRole(ColorScheme::Background);
     QWidget* parentWidget = static_cast<QWidget*>(parent());
     QPalette pal = parentWidget->palette();
     pal.setColor(QPalette::Active, QPalette::Base, backgroundColor);
@@ -186,7 +235,6 @@ void SyntaxHighlighter::formatDigitsGroup(const QString& text, int start, int en
 
     qreal spacing = 100; // Size of the space between groups (100 means no space).
     spacing += 40 * Settings::instance()->digitGrouping;
-    Evaluator *evaluator = Evaluator::instance();
     int inc = !invert ? -1 : 1;
     if(!invert)
     {
@@ -195,7 +243,7 @@ void SyntaxHighlighter::formatDigitsGroup(const QString& text, int start, int en
         end = tmp - 1;
 
         // Skip the first digit so that we add the spacing to the first digit of the next group.
-        while (start != end && evaluator->isSeparatorChar(text[start].unicode()))
+        while (start != end && Evaluator::isSeparatorChar(text[start].unicode()))
             --start;
         if (start == end)
             return; // Bug ?
@@ -205,7 +253,7 @@ void SyntaxHighlighter::formatDigitsGroup(const QString& text, int start, int en
     for (int count = 0 ; start != end ; start += inc)
     {
         // When there are separators in the number, we must not count them as part of the group.
-        if (!evaluator->isSeparatorChar(text[start].unicode()))
+        if (!Evaluator::isSeparatorChar(text[start].unicode()))
         {
             ++count;
             if (count == size)
@@ -230,60 +278,71 @@ void SyntaxHighlighter::groupDigits(const QString& text, int pos, int length)
     static const int DEC_CHAR = (1 << 2);
     static const int HEX_CHAR = (1 << 3);
 
-    if (charType['0'] == 0) { // Initialize the table on first call (not thread-safe!).
-        charType['0'] = HEX_CHAR | DEC_CHAR | OCT_CHAR | BIN_CHAR;
-        charType['1'] = HEX_CHAR | DEC_CHAR | OCT_CHAR | BIN_CHAR;
-        charType['2'] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
-        charType['3'] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
-        charType['4'] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
-        charType['5'] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
-        charType['6'] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
-        charType['7'] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
-        charType['8'] = HEX_CHAR | DEC_CHAR;
-        charType['9'] = HEX_CHAR | DEC_CHAR;
-        charType['a'] = HEX_CHAR;
-        charType['b'] = HEX_CHAR;
-        charType['c'] = HEX_CHAR;
-        charType['d'] = HEX_CHAR;
-        charType['e'] = HEX_CHAR;
-        charType['f'] = HEX_CHAR;
-        charType['A'] = HEX_CHAR;
-        charType['B'] = HEX_CHAR;
-        charType['C'] = HEX_CHAR;
-        charType['D'] = HEX_CHAR;
-        charType['E'] = HEX_CHAR;
-        charType['F'] = HEX_CHAR;
+    if (charType[int('0')] == 0) { // Initialize the table on first call (not thread-safe!).
+        charType[int('0')] = HEX_CHAR | DEC_CHAR | OCT_CHAR | BIN_CHAR;
+        charType[int('1')] = HEX_CHAR | DEC_CHAR | OCT_CHAR | BIN_CHAR;
+        charType[int('2')] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
+        charType[int('3')] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
+        charType[int('4')] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
+        charType[int('5')] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
+        charType[int('6')] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
+        charType[int('7')] = HEX_CHAR | DEC_CHAR | OCT_CHAR;
+        charType[int('8')] = HEX_CHAR | DEC_CHAR;
+        charType[int('9')] = HEX_CHAR | DEC_CHAR;
+        charType[int('a')] = HEX_CHAR;
+        charType[int('b')] = HEX_CHAR;
+        charType[int('c')] = HEX_CHAR;
+        charType[int('d')] = HEX_CHAR;
+        charType[int('e')] = HEX_CHAR;
+        charType[int('f')] = HEX_CHAR;
+        charType[int('A')] = HEX_CHAR;
+        charType[int('B')] = HEX_CHAR;
+        charType[int('C')] = HEX_CHAR;
+        charType[int('D')] = HEX_CHAR;
+        charType[int('E')] = HEX_CHAR;
+        charType[int('F')] = HEX_CHAR;
     }
 
     int s = -1; // Index of the first digit (most significant).
     bool invertGroup = false; // If true, group digits from the most significant digit.
     int groupSize = 3; // Number of digits to group (depends on the radix).
     int allowedChars = DEC_CHAR; // Allowed characters for the radix of the current number being parsed.
-    Evaluator *evaluator = Evaluator::instance();
 
     int endPos = pos + length;
     if (endPos > text.length())
         endPos = text.length();
     for (int i = pos; i < endPos; ++i) {
         ushort c = text[i].unicode();
-        bool isNumber = c < 128 && (charType[c] & allowedChars);
+        bool isDigit = c < 128 && (charType[c] & allowedChars);
 
         if (s >= 0) {
-            if (!isNumber && !evaluator->isSeparatorChar(c)) {
-                // End of current number found, start grouping the digits.
-                formatDigitsGroup(text, s, i, invertGroup, groupSize);
-                s = -1; // Reset.
+            if (!isDigit) {
+                bool endOfNumber = true;
+                // If this is a separator and next character is a digit or a separator,
+                // the next character is part of the same number expression
+                if (Evaluator::isSeparatorChar(c) && i<endPos-1) {
+                    ushort nextC = text[i+1].unicode();
+                    if ((nextC < 128 && (charType[nextC] & allowedChars))
+                         || Evaluator::isSeparatorChar(nextC))
+                        endOfNumber = false;
+                }
+
+                if (endOfNumber) {
+                    // End of current number found, start grouping the digits.
+                    formatDigitsGroup(text, s, i, invertGroup, groupSize);
+                    s = -1; // Reset.
+                }
             }
         } else {
-            if (isNumber) // Start of number found.
+            if (isDigit) // Start of number found.
                 s = i;
         }
 
-        if (!isNumber) {
-            if (evaluator->isRadixChar(c)) {
+        if (!isDigit) {
+            if (Evaluator::isRadixChar(c)) {
                 // Invert the grouping for the fractional part.
                 invertGroup = true;
-            } else {
+            } else if (!Evaluator::isSeparatorChar(c)){
                 // Look for a radix prefix.
                 invertGroup = false;
                 if (i > 0 && text[i - 1] == '0') {
@@ -300,7 +359,7 @@ void SyntaxHighlighter::groupDigits(const QString& text, int pos, int length)
                         groupSize = 3;
                         allowedChars = DEC_CHAR;
                     }
-                } else if (!evaluator->isSeparatorChar(c)){
+                } else {
                     groupSize = 3;
                     allowedChars = DEC_CHAR;
                 }
@@ -312,4 +371,63 @@ void SyntaxHighlighter::groupDigits(const QString& text, int pos, int length)
     if (s >= 0) {
         formatDigitsGroup(text, s, endPos, invertGroup, groupSize);
     }
+}
+
+
+// Original code snippet from StackOverflow.
+// http://stackoverflow.com/questions/15280452/how-can-i-get-highlighted-text-from-a-qsyntaxhighlighter-into-an-html-string
+void SyntaxHighlighter::asHtml(QString& html)
+{
+    // Create a new document from all the selected text document.
+    QTextCursor cursor(document());
+    cursor.select(QTextCursor::Document);
+    QTextDocument* tempDocument(new QTextDocument);
+    Q_ASSERT(tempDocument);
+    QTextCursor tempCursor(tempDocument);
+
+    tempCursor.insertFragment(cursor.selection());
+    tempCursor.select(QTextCursor::Document);
+    // Set the default foreground for the inserted characters.
+    QTextCharFormat textfmt = tempCursor.charFormat();
+    textfmt.setForeground(Qt::gray);
+    tempCursor.setCharFormat(textfmt);
+
+    // Apply the additional formats set by the syntax highlighter
+    QTextBlock start = document()->findBlock(cursor.selectionStart());
+    QTextBlock end = document()->findBlock(cursor.selectionEnd());
+    end = end.next();
+    const int selectionStart = cursor.selectionStart();
+    const int endOfDocument = tempDocument->characterCount() - 1;
+    for(QTextBlock current = start; current.isValid() && current != end; current = current.next()) {
+        const QTextLayout* layout(current.layout());
+
+        foreach(const QTextLayout::FormatRange &range, layout->additionalFormats()) {
+            const int start = current.position() + range.start - selectionStart;
+            const int end = start + range.length;
+            if(end <= 0 || start >= endOfDocument)
+                continue;
+            tempCursor.setPosition(qMax(start, 0));
+            tempCursor.setPosition(qMin(end, endOfDocument), QTextCursor::KeepAnchor);
+            tempCursor.setCharFormat(range.format);
+        }
+    }
+
+    // Reset the user states since they are not interesting
+    for(QTextBlock block = tempDocument->begin(); block.isValid(); block = block.next())
+        block.setUserState(-1);
+
+    // Make sure the text appears pre-formatted, and set the background we want.
+    tempCursor.select(QTextCursor::Document);
+    QTextBlockFormat blockFormat = tempCursor.blockFormat();
+    blockFormat.setNonBreakableLines(true);
+    blockFormat.setBackground(colorForRole(ColorScheme::Background));
+    tempCursor.setBlockFormat(blockFormat);
+
+    // Finally retreive the syntax higlighted and formatted html.
+    html = tempCursor.selection().toHtml("UTF-8");
+    delete tempDocument;
+
+    // Inject CSS, so to avoid a white margin
+    html.replace("<head>", QString("<head> <style> body {background-color: %1;}</style>")
+                                    .arg(colorForRole(ColorScheme::Background).name()));
 }

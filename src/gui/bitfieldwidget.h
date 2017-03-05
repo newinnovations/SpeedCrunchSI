@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2014 Sébastien Szymanski <seb.szymanski@gmail.com>
-// Copyright (C) 2014 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2014 @heldercorreia
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -23,7 +23,10 @@
 #include <QLabel>
 #include <QWidget>
 
-class HNumber;
+class Quantity;
+class QPushButton;
+class QGridLayout;
+class QHBoxLayout;
 
 class BitWidget : public QLabel {
     Q_OBJECT
@@ -32,17 +35,17 @@ public:
     explicit BitWidget(int apos, QWidget* parent = 0);
 
     bool state() const { return m_state; }
-    void setState(bool state) { m_state = state; update(); }
+    void setState(bool state);
 
 signals:
     void stateChanged(bool);
 
 protected:
     void mouseReleaseEvent(QMouseEvent*);
-    void paintEvent(QPaintEvent*);
 
 private:
     enum {
+        // TODO: have this scale with screen DPI
         SizePixels = 20,
     };
 
@@ -61,10 +64,14 @@ signals:
     void bitsChanged(const QString&);
 
 protected:
-    virtual void wheelEvent(QWheelEvent *we);
+    virtual void wheelEvent(QWheelEvent*);
+    virtual void resizeEvent(QResizeEvent*);
 
 public slots:
-    void updateBits(const HNumber&);
+    void clear();
+    void updateBits(const Quantity&);
+    void updateSize();
+    void updateFieldLayout();
 
 private slots:
     void onBitChanged();
@@ -81,6 +88,16 @@ private:
     Q_DISABLE_COPY(BitFieldWidget)
 
     QList<BitWidget*> m_bitWidgets;
+    QList<QHBoxLayout*> m_byteLayouts;
+
+    QGridLayout* m_fieldLayout;
+    QGridLayout* m_buttonsLayout;
+    QHBoxLayout* m_mainLayout;
+
+    QPushButton* m_resetButton;
+    QPushButton* m_invertButton;
+    QPushButton* m_shiftLeftButton;
+    QPushButton* m_shiftRightButton;
 };
 
 #endif // BITFIELDWIDGET_H

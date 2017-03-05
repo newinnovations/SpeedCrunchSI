@@ -1,6 +1,6 @@
 // This file is part of the SpeedCrunch project
 // Copyright (C) 2009 Andreas Scherer <andreas_coder@freenet.de>
-// Copyright (C) 2009, 2011, 2013 Helder Correia <helder.pereira.correia@gmail.com>
+// Copyright (C) 2009, 2011, 2013 @heldercorreia
 // Copyright (C) 2012 Roger Lamb <rlamb1id@gmail.com>
 //
 // This program is free software; you can redistribute it and/or
@@ -85,16 +85,19 @@ UserFunctionListWidget::UserFunctionListWidget(QWidget* parent)
     m_userFunctions->addAction(m_deleteAllAction);
 
     QWidget::setTabOrder(m_searchFilter, m_userFunctions);
+    setFocusProxy(m_searchFilter);
 
     retranslateText();
 
-    connect(m_filterTimer, SIGNAL(timeout()), SLOT(fillTable()));
+    connect(m_filterTimer, SIGNAL(timeout()), SLOT(updateList()));
     connect(m_searchFilter, SIGNAL(textChanged(const QString&)), SLOT(triggerFilter()));
     connect(m_userFunctions, SIGNAL(itemActivated(QTreeWidgetItem*, int)), SLOT(activateItem()));
     connect(m_insertAction, SIGNAL(triggered()), SLOT(activateItem()));
     connect(m_editAction, SIGNAL(triggered()), SLOT(editItem()));
     connect(m_deleteAction, SIGNAL(triggered()), SLOT(deleteItem()));
     connect(m_deleteAllAction, SIGNAL(triggered()), SLOT(deleteAllItems()));
+
+    updateList();
 }
 
 UserFunctionListWidget::~UserFunctionListWidget()
@@ -102,20 +105,20 @@ UserFunctionListWidget::~UserFunctionListWidget()
     m_filterTimer->stop();
 }
 
-void UserFunctionListWidget::fillTable()
+void UserFunctionListWidget::updateList()
 {
     setUpdatesEnabled(false);
 
     m_filterTimer->stop();
     m_userFunctions->clear();
     QString term = m_searchFilter->text();
-    QList<Evaluator::UserFunctionDescr> userFunctions = Evaluator::instance()->getUserFunctions();
+    QList<UserFunction> userFunctions = Evaluator::instance()->getUserFunctions();
 
     for (int i = 0; i < userFunctions.count(); ++i) {
-        QString fname = userFunctions.at(i).name + "(" + userFunctions.at(i).arguments.join(";")  + ")";
+        QString fname = userFunctions.at(i).name() + "(" + userFunctions.at(i).arguments().join(";")  + ")";
 
         QStringList namesAndValues;
-        namesAndValues << fname << userFunctions.at(i).expression;
+        namesAndValues << fname << userFunctions.at(i).expression();
 
         if (term.isEmpty()
             || namesAndValues.at(0).contains(term, Qt::CaseInsensitive)
@@ -139,7 +142,6 @@ void UserFunctionListWidget::fillTable()
         m_noMatchLabel->raise();
     }
 
-    m_searchFilter->setFocus();
     setUpdatesEnabled(true);
 }
 
@@ -157,7 +159,7 @@ void UserFunctionListWidget::retranslateText()
     m_deleteAction->setText(tr("Delete"));
     m_deleteAllAction->setText(tr("Delete All"));
 
-    QTimer::singleShot(0, this, SLOT(fillTable()));
+    QTimer::singleShot(0, this, SLOT(updateList()));
 }
 
 QTreeWidgetItem* UserFunctionListWidget::currentItem() const
@@ -174,14 +176,14 @@ void UserFunctionListWidget::activateItem()
 {
     if (!currentItem() || m_userFunctions->selectedItems().isEmpty())
         return;
-    emit itemActivated(currentItem()->text(0));
+    emit userFunctionSelected(currentItem()->text(0));
 }
 
 void UserFunctionListWidget::editItem()
 {
     if (!currentItem() || m_userFunctions->selectedItems().isEmpty())
         return;
-    emit itemEdited(currentItem()->text(0) + " = " + currentItem()->text(1));
+    emit userFunctionEdited(currentItem()->text(0) + " = " + currentItem()->text(1));
 }
 
 void UserFunctionListWidget::deleteItem()
@@ -189,13 +191,13 @@ void UserFunctionListWidget::deleteItem()
     if (!currentItem() || m_userFunctions->selectedItems().isEmpty())
         return;
     Evaluator::instance()->unsetUserFunction(getUserFunctionName(currentItem()));
-    fillTable();
+    updateList();
 }
 
 void UserFunctionListWidget::deleteAllItems()
 {
     Evaluator::instance()->unsetAllUserFunctions();
-    fillTable();
+    updateList();
 }
 
 void UserFunctionListWidget::triggerFilter()
