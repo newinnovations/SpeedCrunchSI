@@ -811,11 +811,11 @@ char* formatScientific(cfloatnum x, int prec, int base = 10)
  */
 char* formatEngineering(cfloatnum x, int prec, int base = 10)
 {
-    unsigned flags = IO_FLAG_SUPPRESS_PLUS + IO_FLAG_SUPPRESS_EXPPLUS;
+    unsigned flags = IO_FLAG_SUPPRESS_PLUS + IO_FLAG_SUPPRESS_EXPPLUS + IO_FLAG_SUPPRESS_DOT;
     if (base != 10)
         flags += IO_FLAG_SHOW_BASE + IO_FLAG_SHOW_EXPBASE;
     if (prec <= 1) {
-        flags |= IO_FLAG_SUPPRESS_TRL_ZERO + IO_FLAG_SUPPRESS_DOT;
+        flags |= IO_FLAG_SUPPRESS_TRL_ZERO;
         prec = HMATH_MAX_SHOWN;
     }
     return _doFormat(x, base, base, IO_MODE_ENG, prec, flags);
@@ -827,11 +827,11 @@ char* formatEngineering(cfloatnum x, int prec, int base = 10)
  */
 char* formatEngineeringSI(cfloatnum x, int prec, int base = 10)
 {
-    unsigned flags = IO_FLAG_SUPPRESS_PLUS + IO_FLAG_SUPPRESS_EXPPLUS + IO_FLAG_SUPPRESS_EXPZERO + IO_FLAG_SHOW_EXP_SI;
+    unsigned flags = IO_FLAG_SUPPRESS_PLUS + IO_FLAG_SUPPRESS_EXPPLUS + IO_FLAG_SUPPRESS_EXPZERO + IO_FLAG_SHOW_EXP_SI + IO_FLAG_SUPPRESS_DOT;
     if (base != 10)
         flags += IO_FLAG_SHOW_BASE + IO_FLAG_SHOW_EXPBASE;
     if( prec <= 1 ) {
-        flags |= IO_FLAG_SUPPRESS_TRL_ZERO + IO_FLAG_SUPPRESS_DOT;
+        flags |= IO_FLAG_SUPPRESS_TRL_ZERO;
         prec = HMATH_MAX_SHOWN;
     }
     return _doFormat(x, base, base, IO_MODE_ENG, prec, flags);
