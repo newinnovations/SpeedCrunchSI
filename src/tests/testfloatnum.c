@@ -36,6 +36,8 @@
 
 /* a few tests depend on 32 bit integer size, fix this in future!! */
 
+#define _FLOATNUMTEST
+
 #include "math/floatconst.h"
 #include "math/floatcommon.h"
 #include "math/floatlog.h"
@@ -51,6 +53,13 @@
 #include <string.h>
 
 #ifdef _FLOATNUMTEST
+
+/* From math/floaterf.c */
+char erfseries(floatnum x, int digits);
+char erfcsum(floatnum x, int digits);
+char erfcasymptotic(floatnum x, int digits);
+/* From math/floatgamma.c */
+char binetasymptotic(floatnum x, int digits);
 
 #define msbu (1u << (sizeof(unsigned)*8-1))
 #define maxu (msbu + (msbu-1))
@@ -5250,17 +5259,17 @@ static int test_longint2floatnum()
 static int tc_raiseposi(char* base, unsigned exponent)
 {
   floatstruct x, y;
-  int expx, r, result;
+  int expx, result;
 
   float_create(&x);
   float_create(&y);
   float_setasciiz(&x, base);
   float_copy(&y, &x, EXACT);
   float_abs(&y);
-  float_log(&y, 100);
-  r = _raiseposi(&x, &expx, exponent, 100);
+  float_lg(&y, 100);
+  _raiseposi(&x, &expx, exponent, 100);
   float_abs(&x);
-  float_log(&x, 199);
+  float_lg(&x, 199);
   float_addi(&x, &x, expx, 100);
   float_divi(&x, &x, exponent, 100);
   result = _cmprelerror(&x, &y, 95);
@@ -5399,7 +5408,7 @@ static int test_raisei()
   return 1;
 }
 
-static int test_lngammaasymptotic()
+static int test_binetasymptotic()
 {
   floatstruct x, y, tmp;
   int i;
@@ -5423,7 +5432,7 @@ static int test_lngammaasymptotic()
   float_sub(&y, &y, &cLnSqrt2PiMinusHalf, 110);
   float_sub(&y, &y, &c1Div2, 110);
   float_setinteger(&x, 77);
-  lngammaasymptotic(&x, 100);
+  binetasymptotic(&x, 100);
   if (!_cmprelerror(&y, &x, -95))
   {
     printf("verification FAILED\n");
@@ -5954,9 +5963,9 @@ static int tc_out(char* value, int digits, char base, char mode, char* result)
   tokens.intpart.buf = intbuf;
   tokens.fracpart.sz = 150;
   tokens.fracpart.buf = fracbuf;
-  if (float_out(&tokens, &x, digits, base, base != 2? base : 16, mode) != Success)
+  if (float_out(&tokens, &x, digits, base, /*base != 2? base : 16,*/ mode) != Success)
     return result == NULL || *result == '\0';
-  cattokens(buffer, 350, &tokens,
+  cattokens(buffer, 350, &tokens, base,
     IO_FLAG_SHOW_BASE + IO_FLAG_SHOW_EXPBASE + IO_FLAG_SUPPRESS_DOT
     + IO_FLAG_SUPPRESS_LDG_ZERO);
   float_free(&x);
@@ -6829,7 +6838,7 @@ int main(int argc, char* argv[])
   if(!test_cos()) return testfailed("_cos");
   if(!test_sin()) return testfailed("_sin");
   if(!test_tan()) return testfailed("_tan");
-  if(!test_lngammaasymptotic()) return testfailed("lngammaseries");
+  if(!test_binetasymptotic()) return testfailed("lngammaseries");
   if(!test_pochhammer()) return testfailed("_pochhammer");
   if(!test_lngamma()) return testfailed("_lngamma");
   if(!test_gamma()) return testfailed("_gamma");
