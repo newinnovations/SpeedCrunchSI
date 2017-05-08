@@ -36,8 +36,6 @@
 
 /* a few tests depend on 32 bit integer size, fix this in future!! */
 
-#define _FLOATNUMTEST
-
 #include "math/floatconst.h"
 #include "math/floatcommon.h"
 #include "math/floatlog.h"
@@ -5965,7 +5963,7 @@ static int tc_out(char* value, int digits, char base, char mode, char* result)
   tokens.fracpart.buf = fracbuf;
   if (float_out(&tokens, &x, digits, base, /*base != 2? base : 16,*/ mode) != Success)
     return result == NULL || *result == '\0';
-  cattokens(buffer, 350, &tokens, base,
+  cattokens(buffer, 350, &tokens, 0,
     IO_FLAG_SHOW_BASE + IO_FLAG_SHOW_EXPBASE + IO_FLAG_SUPPRESS_DOT
     + IO_FLAG_SUPPRESS_LDG_ZERO);
   float_free(&x);
@@ -5974,19 +5972,22 @@ static int tc_out(char* value, int digits, char base, char mode, char* result)
 
 static int test_out()
 {
-  t_ioparams iop;
-  t_ioparams saveiop;
+  t_ioparams iop[4] = {
+    // base, expbase, dot, basetag, expbegin, expend, cmpltag, maxdigits
+    {10, 10, '.', "0d", "(", ")", "", 70},
+    {16, 10, '.', "0x", "(", ")", "sF", 70},
+    {2, 10, '.', "0b", "(", ")", "s1", 70},
+    {8, 10, '.', "0o", "(", ")", "s7", 70}
+  };
+  t_ioparams saveiop[4];
+  int i;
 
-  iop.base = 10;
-  iop.expbase = 10;
-  iop.dot = '.';
-  iop.basetag = "0d";
-  iop.expbegin = "(";
-  iop.expend = ")";
-  iop.cmpltag = NULL;
-  iop.maxdigits = 70;
-  saveiop = *getioparams(10);
-  setioparams(&iop);
+  // Use our own ioparams to make sure the results are the expected ones
+  for (i = 0 ; i < sizeof(iop) / sizeof(t_ioparams) ; ++i) {
+    saveiop[i] = *getioparams(iop[i].base);
+    setioparams(&iop[i]);
+  }
+
   printf("testing float_out\n");
 
   if (!tc_out("NaN", 0, 10, IO_MODE_SCIENTIFIC, "NaN")) return 0;
@@ -6136,7 +6137,12 @@ static int test_out()
   if (!tc_out("-2", 0, 16, IO_MODE_COMPLEMENT, "0xsFE(+0d0)")) return 0;
   if (!tc_out("-16", 0, 16, IO_MODE_COMPLEMENT, "0xsF0(+0d0)")) return 0;
   if (!tc_out("-17", 0, 16, IO_MODE_COMPLEMENT, "0xsFEF(+0d0)")) return 0;
-  setioparams(&saveiop);
+
+  // Restore default ioparams
+  for (i = 0 ; i < sizeof(iop) / sizeof(t_ioparams) ; ++i) {
+    setioparams(&saveiop[i]);
+  }
+
   return 1;
 }
 
