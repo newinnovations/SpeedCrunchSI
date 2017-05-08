@@ -871,7 +871,7 @@ Tokens Evaluator::scan(const QString& expr) const
             expStart = -1;
             expText = "";
             numberBase = 10;
-            expBase = numberBase;
+            expBase = 0;
 
             // No break here on purpose (make sure Start is the next case)
 
@@ -1074,6 +1074,11 @@ Tokens Evaluator::scan(const QString& expr) const
             ushort c = ch.unicode();
             bool isDigit = c < DIGIT_MAP_COUNT && (s_digitMap[c] <= numberBase);
 
+            if (expBase == 0) {
+                // Set the default exponent base (same as number)
+                expBase = numberBase;
+            }
+
             if (expText.length() == 1 && (ch == '+' || isMinus(ch))) {
                 // Possible + or - right after E.
                 expText.append(ch == QChar(0x2212) ? '-' : ch);
@@ -1086,9 +1091,8 @@ Tokens Evaluator::scan(const QString& expr) const
                     state = InExponentBase;
                 } else {
                     // Parse the exponent absolute value.
-                    expBase = numberBase;
-                    state = InExponent;
                     tokenText.append(expText);
+                    state = InExponent;
                 }
             } else if (isSeparatorChar(ch)) {
                 // Ignore thousand separators.
@@ -1127,12 +1131,12 @@ Tokens Evaluator::scan(const QString& expr) const
                 tokenText.append(expText);
                 tokenText.append(ch.toLower());
                 ++i;
-                state = InExponent;
             } else {
-                // No exponent base specified, use same base as number
-                expBase = numberBase;
-                state = InExponent;
+                // No exponent base specified, use the default one
+                tokenText.append(expText);
             }
+
+            state = InExponent;
 
             break;
         }
