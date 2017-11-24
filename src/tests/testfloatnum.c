@@ -144,14 +144,14 @@ static unsigned hash(floatnum x)
   if (x)
   {
     bc = x->significand;
-    result = rol(x->exponent) ^ (unsigned)(bc);
+    result = rol(x->exponent) ^ (unsigned long)(bc);
     if (bc)
     {
       result = rol(result) ^ bc->n_sign;
       result = rol(result) ^ bc->n_len;
       result = rol(result) ^ bc->n_scale;
       p = bc->n_value;
-      result = rol(result) ^ (unsigned)p;
+      result = rol(result) ^ (unsigned long)p;
       for (i = 0; i++ <= bc->n_scale;)
         result = rol(result) ^ *(p++);
     }
