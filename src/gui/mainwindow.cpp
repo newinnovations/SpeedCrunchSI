@@ -1233,7 +1233,6 @@ void MainWindow::clearHistory()
     emit historyChanged();
 
     m_conditions.autoAns = false;
-    m_widgets.editor->setAnsAvailable(false);
 }
 
 void MainWindow::clearEditor()
@@ -2130,7 +2129,6 @@ void MainWindow::restoreSession() {
     emit functionsChanged();
 
     m_conditions.autoAns = !m_session->historyToList().empty();
-    m_widgets.editor->setAnsAvailable(m_conditions.autoAns);
 }
 
 void MainWindow::evaluateEditorExpression()
