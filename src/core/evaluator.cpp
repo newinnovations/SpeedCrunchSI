@@ -793,7 +793,7 @@ QString Evaluator::checkSIPrefix(QChar& ch) const
     {
         case 'Y': exp = "E24" ; break;
         case 'Z': exp = "E21" ; break;
-        case 'E': exp = "E18" ; break; //FIXME: incompatible with exponent notication
+        // case 'E': exp = "E18" ; break; //FIXME: incompatible with exponent notication
         case 'P': exp = "E15" ; break;
         case 'T': exp = "E12" ; break;
         case 'G': exp = "E9"  ; break;
@@ -859,7 +859,8 @@ Tokens Evaluator::scan(const QString& expr) const
     int expStart = -1;  // Index of the exponent part in the expression.
     QString expText;    // Start of the exponent text matching /E[\+\-]*/
     QString expSI;
-    bool lastWasSeperator = false;
+    bool lastWasSeparator = false;
+    bool gotRadixChar = false;
 
     // Force a terminator.
     ex.append(QChar());
@@ -887,7 +888,8 @@ Tokens Evaluator::scan(const QString& expr) const
             expStart = -1;
             expText = "";
             expSI = QString();
-            lastWasSeperator = false;
+            lastWasSeparator = false;
+            gotRadixChar = false;
 
             // No break here on purpose (make sure Start is the next case)
 
@@ -911,6 +913,7 @@ Tokens Evaluator::scan(const QString& expr) const
                 tokenText.append(ch);
                 numberBase = 10;
                 state = InNumber;
+                gotRadixChar = true;
                 ++i;
             } else if (isSeparatorChar(ch)) {
                 // Leading separator, probably a number
@@ -1002,6 +1005,7 @@ Tokens Evaluator::scan(const QString& expr) const
                 tokenText.append(ch);
                 numberBase = 10;
                 state = InNumber;
+                gotRadixChar = true;
                 ++i;
             } else if (ch.toUpper() == 'X' && tokenText == "0") {
                 // Hexadecimal number.
@@ -1065,14 +1069,17 @@ Tokens Evaluator::scan(const QString& expr) const
                     state = InExpIndicator;
                 else
                     state = Bad;
-            } else if (expSI.isNull() && numberBase == 10 && !lastWasSeperator && isSIPrefix(ch)) { // SI prefix (only one allowed) and digits following are decimals
+            } else if (expSI.isNull() && numberBase == 10 && !lastWasSeparator && isSIPrefix(ch)) { // SI prefix (only one allowed) and digits following are decimals
                 expSI = checkSIPrefix(ch);
-                tokenText.append(Settings::instance()->radixCharacter());
+                if ( !gotRadixChar ) {
+                    tokenText.append(Settings::instance()->radixCharacter());
+                }
                 ++i;
             } else if (isRadixChar(ch)) {
                 // Might be a radix point or a separator.
                 // Collect it and decide later.
                 tokenText.append(ch);
+                gotRadixChar = true;
                 ++i;
             } else if (isSeparatorChar(ch)) {
                 // Ignore thousand separators.
@@ -1088,7 +1095,7 @@ Tokens Evaluator::scan(const QString& expr) const
                     state = Bad;
             }
 
-            lastWasSeperator = isSeparatorChar(ch);
+            lastWasSeparator = isSeparatorChar(ch);
 
             break;
         }
