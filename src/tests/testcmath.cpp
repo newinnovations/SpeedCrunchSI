@@ -128,16 +128,16 @@ void test_format()
     CHECK_FORMAT(n + Format::Precision(5), CNumber("3.14"), "3.14000e0");
     CHECK_FORMAT(n + Format::Precision(7), CNumber("3.14"), "3.1400000e0");
     CHECK_FORMAT(n + Format::Precision(3), CNumber("-0.001"), "-1.000e-3");
-    CHECK_FORMAT(n + Format::Precision(2), CNumber("0.0001"), "100.e-6");
+    CHECK_FORMAT(n + Format::Precision(2), CNumber("0.0001"), "100e-6");
     CHECK_FORMAT(n + Format::Precision(2), CNumber("0.001"), "1.00e-3");
     CHECK_FORMAT(n + Format::Precision(2), CNumber("0.01"), "10.0e-3");
-    CHECK_FORMAT(n + Format::Precision(2), CNumber("0.1"), "100.e-3");
+    CHECK_FORMAT(n + Format::Precision(2), CNumber("0.1"), "100e-3");
     CHECK_FORMAT(n + Format::Precision(2), CNumber("1"), "1.00e0");
     CHECK_FORMAT(n + Format::Precision(2), CNumber("10"), "10.0e0");
-    CHECK_FORMAT(n + Format::Precision(2), CNumber("100"), "100.e0");
+    CHECK_FORMAT(n + Format::Precision(2), CNumber("100"), "100e0");
     CHECK_FORMAT(n + Format::Precision(2), CNumber("1000"), "1.00e3");
     CHECK_FORMAT(n + Format::Precision(2), CNumber("10000"), "10.0e3");
-    CHECK_FORMAT(n + Format::Precision(2), CNumber("100000"), "100.e3");
+    CHECK_FORMAT(n + Format::Precision(2), CNumber("100000"), "100e3");
     CHECK_FORMAT(n + Format::Precision(2), CNumber("1000000"), "1.00e6");
     CHECK_FORMAT(n + Format::Precision(2), CNumber("10000000"), "10.0e6");
 
