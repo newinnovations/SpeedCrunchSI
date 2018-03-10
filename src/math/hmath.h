@@ -122,6 +122,7 @@ public:
         static Format Fixed();
         static Format Scientific();
         static Format Engineering();
+        static Format EngineeringSI();
     };
 };
 

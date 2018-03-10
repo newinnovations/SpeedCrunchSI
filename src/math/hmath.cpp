@@ -731,6 +731,13 @@ HNumber::Format HNumber::Format::Engineering()
     return result;
 }
 
+HNumber::Format HNumber::Format::EngineeringSI()
+{
+    Format result;
+    result.mode = Mode::EngineeringSI;
+    return result;
+}
+
 namespace {
 
 char* _doFormat(cfloatnum x, signed char base, signed char expbase, char outmode, int prec, unsigned flags)

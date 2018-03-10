@@ -120,6 +120,30 @@ void test_format()
     CHECK_FORMAT(n + Format::Precision(2), HNumber("1000000"), "1.00e6");
     CHECK_FORMAT(n + Format::Precision(2), HNumber("10000000"), "10.0e6");
 
+    // Engineering notation.
+    Format esi = Format::EngineeringSI();
+    CHECK_FORMAT(esi + Format::Precision(0), HNumber("NaN"), "NaN");
+    CHECK_FORMAT(esi + Format::Precision(0), HNumber("0"), "0");
+    CHECK_FORMAT(esi + Format::Precision(0), HNumber("3.14"), "3.14");
+    CHECK_FORMAT(esi + Format::Precision(1), HNumber("3.14"), "3.14");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("3.14"), "3.14");
+    CHECK_FORMAT(esi + Format::Precision(3), HNumber("3.14"), "3.140");
+    CHECK_FORMAT(esi + Format::Precision(5), HNumber("3.14"), "3.14000");
+    CHECK_FORMAT(esi + Format::Precision(7), HNumber("3.14"), "3.1400000");
+    CHECK_FORMAT(esi + Format::Precision(3), HNumber("-0.001"), "-1.000m");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("0.0001"), "100µ");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("0.001"), "1.00m");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("0.01"), "10.0m");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("0.1"), "100m");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("1"), "1.00");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("10"), "10.0");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("100"), "100");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("1000"), "1.00k");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("10000"), "10.0k");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("100000"), "100k");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("1000000"), "1.00M");
+    CHECK_FORMAT(esi + Format::Precision(2), HNumber("10000000"), "10.0M");
+
     // Scientific notation.
     Format e = Format::Scientific();
     CHECK_FORMAT(e + Format::Precision(0), HNumber("NaN"), "NaN");

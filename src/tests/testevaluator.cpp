@@ -884,6 +884,34 @@ void test_format()
     CHECK_EVAL("polar(3+4j)", "5 * exp(j*0.92729521800161223243)");
 }
 
+void test_si()
+{
+    CHECK_EVAL("12Y3", "12300000000000000000000000");
+    CHECK_EVAL("12Z3", "12300000000000000000000");
+    // CHECK_EVAL("12E3", "12300000000000000000");
+    CHECK_EVAL("12P3", "12300000000000000");
+    CHECK_EVAL("12T3", "12300000000000");
+    CHECK_EVAL("12G3", "12300000000");
+    CHECK_EVAL("12M3", "12300000");
+    CHECK_EVAL("12k3", "12300");
+    CHECK_EVAL("12h3", "1230");
+    CHECK_EVAL("12d3", "1.23");
+    CHECK_EVAL("12c3", "0.123");
+    CHECK_EVAL("12m3", "0.0123");
+    CHECK_EVAL("12u3", "0.0000123");
+    CHECK_EVAL("12µ3", "0.0000123");
+    CHECK_EVAL("12n3", "0.0000000123");
+    CHECK_EVAL("12p3", "0.0000000000123");
+    CHECK_EVAL("12f3", "0.0000000000000123");
+    CHECK_EVAL("12a3", "0.0000000000000000123");
+    CHECK_EVAL("12z3", "0.00000000000000000001");
+    CHECK_EVAL("12y3", "1.23e-23");
+
+    CHECK_EVAL("44k10", "44100");
+    CHECK_EVAL("44k1", "44100");
+    CHECK_EVAL("44.1k", "44100");
+    CHECK_EVAL("44.10k", "44100");
+}
 
 int main(int argc, char* argv[])
 {
@@ -934,6 +962,8 @@ int main(int argc, char* argv[])
     test_format();
 
     test_angle_mode(settings);
+
+    test_si();
 
     if (!eval_failed_tests)
         return 0;
