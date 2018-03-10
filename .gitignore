@@ -20,3 +20,4 @@ moc_*.cpp
 testcmath
 testdmath
 testser
+build/

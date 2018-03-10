@@ -42,6 +42,12 @@ The same with units
 
     sudo apt install qtbase5-dev qtbase5-dev-tools qttools5-dev qttools5-dev-tools
 
+## Building
+
+    mkdir build
+    cd build
+    cmake ../src
+    make
 
 ## About SpeedCrunch
 
