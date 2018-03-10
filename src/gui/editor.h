@@ -52,7 +52,6 @@ public:
     int cursorPosition() const;
     void doBackspace();
     char radixChar() const;
-    void setAnsAvailable(bool);
     void setAutoCalcEnabled(bool);
     void setAutoCompletionEnabled(bool);
     void setCursorPosition(int pos);
@@ -97,12 +96,12 @@ protected slots:
     void checkAutoCalc();
     void checkAutoComplete();
     void checkMatching();
+    void checkSelectionAutoCalc();
     void doMatchingLeft();
     void doMatchingPar();
     void doMatchingRight();
     void historyBack();
     void historyForward();
-    void startSelAutoCalcTimer();
     void triggerAutoComplete();
     void triggerEnter();
 
@@ -118,11 +117,8 @@ protected:
 private:
     Q_DISABLE_COPY(Editor)
 
-    bool m_isAnsAvailable;
     bool m_isAutoCalcEnabled;
     bool m_shouldBlockAutoCompletionOnce = false;
-    QTimer* m_autoCalcSelectionTimer;
-    QTimer* m_autoCalcTimer;
     bool m_isAutoCompletionEnabled;
     EditorCompletion* m_completion;
     QTimer* m_completionTimer;

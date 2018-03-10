@@ -259,6 +259,11 @@ void test_functions()
     CHECK(CMath::abs("-3.14159"), "3.14159");
     CHECK(CMath::abs("-0.00000014159"), "0.00000014159");
 
+    CHECK(CMath::conj("NaN"), "NaN");
+    CHECK(CMath::conj("1"), "1");
+    CHECK(CMath::conj("1j"), "-1j");
+    CHECK(CMath::conj("1+1j"), "1-1j");
+
     CHECK(CMath::floor("NaN"), "NaN");
     CHECK(CMath::floor("0"), "0");
     CHECK(CMath::floor("5"), "5");
@@ -475,6 +480,13 @@ void test_functions()
     CHECK_PRECISE(CMath::raise("2", "0.1"), "1.07177346253629316421300632502334202290638460497756");
     CHECK_PRECISE(CMath::raise("2", "0.2"), "1.14869835499703500679862694677792758944385088909780");
     CHECK_PRECISE(CMath::raise("2", "0.3"), "1.23114441334491628449939306916774310987613776110082");
+    // See https://en.wikipedia.org/wiki/Exponentiation#Powers_of_zero
+    CHECK_KNOWN_ISSUE(CMath::raise("0", "1"),      "0", 728);
+    CHECK_KNOWN_ISSUE(CMath::raise("0", "1.5"),    "0", 728);
+    CHECK_KNOWN_ISSUE(CMath::raise("0", "2"),      "0", 728);
+    CHECK_KNOWN_ISSUE(CMath::raise("0", "1+1j"),   "0", 718);
+    CHECK_KNOWN_ISSUE(CMath::raise("0", "1.5+1j"), "0", 718);
+    CHECK_KNOWN_ISSUE(CMath::raise("0", "2+1j"),   "0", 718);
 
     CHECK(CMath::exp("NaN"), "NaN");
     CHECK(CMath::exp("0"), "1");

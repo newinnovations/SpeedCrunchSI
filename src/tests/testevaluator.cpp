@@ -122,6 +122,34 @@ void test_constants()
     CHECK_EVAL("1", "1");
 }
 
+void test_exponentiation()
+{
+    CHECK_EVAL("2e10", "20000000000");
+    CHECK_EVAL("2E10", "20000000000");
+    CHECK_EVAL("2e-10", "0.0000000002");
+    CHECK_EVAL("2E0xa", "20000000000");
+    CHECK_EVAL("2e-0xa", "0.0000000002");
+    CHECK_EVAL("0b10b10", "8");
+    CHECK_EVAL("0b10B10", "8");
+    CHECK_EVAL("0b10b-10", "0.5");
+    CHECK_EVAL("0b10b0d2", "8");
+    CHECK_EVAL("0b10b-0d2", "0.5");
+    CHECK_EVAL("0o2o10", "33554432");
+    CHECK_EVAL("0o2O10", "33554432");
+    CHECK_EVAL("0o2C10", "33554432");
+    CHECK_EVAL("0o2o-10", "0.00000011920928955078");
+    CHECK_EVAL("0o2o0d8", "33554432");
+    CHECK_EVAL("0o2o-0d8", "0.00000011920928955078");
+    CHECK_EVAL("0x2h10", "36893488147419103232");
+    CHECK_EVAL("0x2H10", "36893488147419103232");
+    CHECK_EVAL("0x2h-10", "0.00000000000000000011");
+    CHECK_EVAL("0x2h0d16", "36893488147419103232");
+    CHECK_EVAL("0x2h-0d16", "0.00000000000000000011");
+    CHECK_EVAL_FAIL("0x2o11");
+    CHECK_EVAL_FAIL("0b2C11");
+    CHECK_EVAL_FAIL("0o2b11");
+}
+
 void test_unary()
 {
     CHECK_EVAL("-0", "0");
@@ -170,6 +198,12 @@ void test_unary()
     CHECK_EVAL("-1!", "-1");
     CHECK_EVAL("-2!", "-2");
     CHECK_EVAL("-3!", "-6");
+
+    // Unicode minus sign
+    CHECK_EVAL("−1", "-1");
+    CHECK_EVAL("−(2*3)", "-6");
+    CHECK_EVAL("2*−1", "-2");
+    CHECK_EVAL("2e−1", "0.2");
 }
 
 void test_binary()
@@ -461,7 +495,7 @@ void test_function_trig()
 
 void test_function_stat()
 {
-    CHECK_EVAL("MIN(0)", "0");
+    CHECK_EVAL_FAIL("MIN(0)");
     CHECK_EVAL("MIN(0; 1)", "0");
     CHECK_EVAL("MIN(0; 2)", "0");
     CHECK_EVAL("MIN(-1; 0)", "-1");
@@ -471,7 +505,7 @@ void test_function_stat()
     CHECK_EVAL("MIN(-1; 0; 1; 2)", "-1");
     CHECK_EVAL("MIN(-2; -1; 0; 1; 2)", "-2");
 
-    CHECK_EVAL("MAX(0)", "0");
+    CHECK_EVAL_FAIL("MAX(0)");
     CHECK_EVAL("MAX(0; 1)", "1");
     CHECK_EVAL("MAX(0; 2)", "2");
     CHECK_EVAL("MAX(-1; 0)", "0");
@@ -481,11 +515,7 @@ void test_function_stat()
     CHECK_EVAL("MAX(-1; 0; 1; 2)", "2");
     CHECK_EVAL("MAX(-2; -1; 0; 1; 2)", "2");
 
-    CHECK_EVAL("SUM(0)", "0");
-    CHECK_EVAL("SUM(1)", "1");
-    CHECK_EVAL("SUM(-1)", "-1");
-    CHECK_EVAL("SUM(100)", "100");
-    CHECK_EVAL("SUM(-100)", "-100");
+    CHECK_EVAL_FAIL("SUM(1)");
     CHECK_EVAL("SUM(100;1)", "101");
     CHECK_EVAL("SUM(-100;1)", "-99");
     CHECK_EVAL("SUM(0;0;0)", "0");
@@ -494,10 +524,7 @@ void test_function_stat()
     CHECK_EVAL("SUM(1;2;3;4;5;6)", "21");
     CHECK_EVAL("SUM(1;-2;3;-4;5;-6)", "-3");
 
-    CHECK_EVAL("PRODUCT(0)", "0");
-    CHECK_EVAL("PRODUCT(1)", "1");
-    CHECK_EVAL("PRODUCT(-1)", "-1");
-    CHECK_EVAL("PRODUCT(100)", "100");
+    CHECK_EVAL_FAIL("PRODUCT(-1)");
     CHECK_EVAL("PRODUCT(100;0)", "0");
     CHECK_EVAL("PRODUCT(100;1)", "100");
     CHECK_EVAL("PRODUCT(-100;1)", "-100");
@@ -506,7 +533,7 @@ void test_function_stat()
     CHECK_EVAL("PRODUCT(1;2;3;4;5;6)", "720");
     CHECK_EVAL("PRODUCT(1;-2;3;-4;5;-6)", "-720");
 
-    CHECK_EVAL("AVERAGE(0)", "0");
+    CHECK_EVAL_FAIL("AVERAGE(0)");
     CHECK_EVAL("AVERAGE(0;0)", "0");
     CHECK_EVAL("AVERAGE(0;0;0)", "0");
     CHECK_EVAL("AVERAGE(0;1)", "0.5");
@@ -519,14 +546,8 @@ void test_function_stat()
     CHECK_EVAL("AVERAGE(2.25;4.75)", "3.5");
     CHECK_EVAL("AVERAGE(1/3;2/3)", "0.5");
 
-    CHECK_EVAL_FAIL("GEOMEAN(0)");
-    CHECK_EVAL_FAIL("GEOMEAN(-1)");
-    CHECK_EVAL_FAIL("GEOMEAN(-1e20)");
-    CHECK_EVAL("GEOMEAN(1)", "1");
-    CHECK_EVAL("GEOMEAN(2)", "2");
-    CHECK_EVAL("GEOMEAN(3)", "3");
-    CHECK_EVAL("GEOMEAN(4)", "4");
-    CHECK_EVAL("GEOMEAN(5)", "5");
+    CHECK_EVAL_FAIL("GEOMEAN(-1e20;0;-1)");
+    CHECK_EVAL_FAIL("GEOMEAN(5)");
     CHECK_EVAL("GEOMEAN(1;1)", "1");
     CHECK_EVAL("GEOMEAN(1;4)", "2");
     CHECK_EVAL("GEOMEAN(4;9)", "6");
@@ -543,14 +564,9 @@ void test_function_stat()
 
 void test_function_logic()
 {
-    CHECK_EVAL("and(0)", "0");
-    CHECK_EVAL("and(1)", "1");
-
-    CHECK_EVAL("or(0)", "0");
-    CHECK_EVAL("or(1)", "1");
-
-    CHECK_EVAL("xor(0)", "0");
-    CHECK_EVAL("xor(1)", "1");
+    CHECK_EVAL_FAIL("and(1)");
+    CHECK_EVAL_FAIL("or(2)");
+    CHECK_EVAL_FAIL("xor(3)");
 
     CHECK_EVAL("and(0;0)", "0");
     CHECK_EVAL("and(0;1)", "0");
@@ -816,9 +832,10 @@ void test_angle_mode(Settings* settings)
     CHECK_EVAL("sin(180)", "0");
     CHECK_EVAL("arcsin(-1)", "-90");
     CHECK_EVAL_FAIL("sin(1j)");
-    CHECK_EVAL_FAIL("arcsin(-2)");
+    CHECK_EVAL("arcsin(-2)", "-90+75.4561292902168920041j");
     CHECK_EVAL("radian","57.2957795130823208768");
     CHECK_EVAL("degree","1");
+    CHECK_EVAL_KNOWN_ISSUE("arcsin(0.25)", "14.47751218592992387877", 781);
 }
 
 void test_implicit_multiplication()
@@ -873,6 +890,13 @@ void test_implicit_multiplication()
 
     /* Tests issue 598 */
     CHECK_EVAL("2(a)^3", "250");
+
+    CHECK_EVAL_KNOWN_ISSUE("6/2(2+1)", "9", 741);
+    CHECK_EVAL_KNOWN_ISSUE("2^2(2)", "8", 741);
+    CHECK_EVAL_KNOWN_ISSUE("2^2(2)(2)", "16", 741);
+    CHECK_EVAL_KNOWN_ISSUE("2^2(2*2)", "16", 741);
+    CHECK_EVAL_KNOWN_ISSUE("2^2(2)+3", "11", 741);
+    CHECK_EVAL_FAIL("pi (2)");
 }
 
 void test_format()
@@ -928,6 +952,7 @@ int main(int argc, char* argv[])
     eval->initializeBuiltInVariables();
 
     test_constants();
+    test_exponentiation();
     test_unary();
     test_binary();
 
